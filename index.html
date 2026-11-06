@@ -45,7 +45,7 @@ table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px sol
 .empty{padding:40px;text-align:center;color:#8f98a0}progress{width:100%;height:10px}
 </style></head><body>
 <header><div class="bar"><span class="logo" onclick="go('')">NOVAVAULT</span><a class="t" onclick="go('')">Store</a><a class="t" onclick="go('library')">Library</a><a class="t" onclick="go('publish')">Publish</a><a class="t" id="modlink" onclick="go('admin')" hidden></a><span class="sp"></span><span id="acct"></span></div></header>
-<main id="app"></main>
+<main id="app"><div class="empty">Loading…</div></main>
 <div id="dock"></div>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -56,7 +56,7 @@ const GR=["#2b5876,#4e4376","#614385,#516395","#134e5e,#71b280","#42275a,#734b6d
 const art=g=>g.hasCover?`background-image:linear-gradient(transparent 55%,#000a),url(/cover/${g.id})`:`background:linear-gradient(135deg,${GR[g.id%GR.length]})`;
 const sz=b=>b>=1e9?(b/1e9).toFixed(2)+" GB":(b/1e6).toFixed(1)+" MB";
 function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)}
-async function api(p,o={}){const r=await fetch(p,o),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Request failed");return j}
+async function api(p,o={}){const c=new AbortController(),t=setTimeout(()=>c.abort(),30000);try{const r=await fetch(p,{...o,signal:c.signal}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Request failed ("+r.status+" "+p+")");return j}catch(e){throw new Error(e.name==="AbortError"?"The server didn't answer in time ("+p+")":e.message)}finally{clearTimeout(t)}}
 const post=(p,b)=>api(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});
 const go=h=>{location.hash="#/"+h};
 function price(g){return g.sale>0&&g.sale<g.price?`<span class="pr"><span class="dc">-${Math.round(100-g.sale/g.price*100)}%</span><s>${usd(g.price)}</s><b>${usd(g.sale)}</b></span>`:`<span class="pr">${usd(g.price)}</span>`}
@@ -68,7 +68,8 @@ async function refresh(){const [m,g]=await Promise.all([api("/api/me"),api("/api
  $("#acct").innerHTML=me?`<span class="me">Wallet ${usd(me.balance)}</span> <button onclick="addFunds()" ${demoFunds?"":"hidden"}>+ Add test funds</button> <button onclick="logout()">Log out</button>`:`<button onclick="go('login')">Log in</button>`}
 async function addFunds(){try{await post("/api/wallet/add");toast("Added $20 test funds");route()}catch(e){toast(e.message)}}
 async function logout(){await post("/api/logout");go("");route()}
-async function route(){await refresh();const p=location.hash.replace(/^#\//,"").split("/"),v=p[0];
+async function route(){try{await route0()}catch(e){$("#app").innerHTML=`<div class="box" style="max-width:520px;margin:40px auto"><h2 style="margin-top:0;border:0">Something went wrong</h2><p style="color:#ff8a8a">${esc(e.message)}</p><button class="buy" onclick="route()">Try again</button></div>`}}
+async function route0(){await refresh();const p=location.hash.replace(/^#\//,"").split("/"),v=p[0];
  if(v==="game")return gamePage(+p[1]);if(v==="library")return libPage();if(v==="publish")return pubPage();if(v==="admin")return adminPage();if(v==="profile")return profilePage(decodeURIComponent(p[1]||""));if(v==="settings")return settingsPage();if(v==="login")return authPage();storePage()}
 function storePage(){const gs=[...new Set(pg().map(g=>g.genre).filter(Boolean))],list=pg().filter(g=>(genre==="All"||g.genre===genre)&&(g.title+g.dev).toLowerCase().includes(q.toLowerCase())),f=pg()[0];
  $("#app").innerHTML=(f&&!q&&genre==="All"?`<div class="feat" onclick="go('game/${f.id}')"><div class="img" style="${art(f)}">${f.hasCover?"":esc(f.title)}</div><div class="side"><h1>${esc(f.title)}</h1><div>${esc((f.desc||"").slice(0,160))}</div><div>${price(f)}</div><span class="btn buy">View game</span></div></div>`:"")+

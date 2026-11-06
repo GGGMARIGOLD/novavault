@@ -49,7 +49,7 @@ static json earned(const std::string& n) {
   json b = json::array(); auto& u = db["users"][n]; std::string r = u.value("role", "user");
   if (r == "admin") b.push_back("Admin"); if (r == "mod") b.push_back("Moderator");
   json gr = u.value("granted", json::array()); for (auto& x : gr) b.push_back(x);
-  bool dev = false; for (auto& [k, g] : db["games"].items()) if (g["owner"] == n && g.value("status", "approved") == "approved") dev = true;
+  bool dev = false; for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == n && g.value("status", "approved") == "approved") dev = true;
   if (dev) b.push_back("Developer"); if (u["library"].size() >= 10) b.push_back("Collector");
   return b;
 }
@@ -65,6 +65,7 @@ static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((uns
 static long cents(const std::string& s) { try { return std::max(0L, std::lround(std::stod(s) * 100)); } catch (...) { return 0; } }
 
 int main() {
+  setvbuf(stdout, nullptr, _IONBF, 0);
   fs::create_directories("data/files");
   if (fs::exists("data/db.json")) { std::ifstream f("data/db.json"); db = json::parse(f, nullptr, false); if (db.is_discarded()) { fprintf(stderr, "db.json is corrupt\n"); return 1; } }
   if (const char* a = getenv("ADMIN_USER")) { auto k = lower(a); if (db["users"].contains(k)) { db["users"][k]["role"] = "admin"; save(); printf("%s is an admin\n", a); } }
@@ -115,7 +116,7 @@ int main() {
     std::lock_guard<std::mutex> l(mu); std::string n = lower(q.matches[1]), me = whoami(q);
     if (!db["users"].contains(n)) return reply(r, 404, err("No such user"));
     auto& u = db["users"][n]; std::string pr = u.value("presence", "online"); json games = json::array();
-    for (auto& [k, g] : db["games"].items()) if (g["owner"] == n && g.value("status", "approved") == "approved") games.push_back(pub(g));
+    for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == n && g.value("status", "approved") == "approved") games.push_back(pub(g));
     json p = {{"name", u["name"]}, {"key", n}, {"role", u.value("role", "user")}, {"bio", u.value("bio", "")}, {"statusText", u.value("statusText", "")},
       {"presence", (pr == "invisible" && me != n) ? "offline" : pr}, {"badges", shownBadges(n)}, {"hasAvatar", u.value("avatar", "") != ""}, {"hasBanner", u.value("banner", "") != ""},
       {"joined", u.value("joined", 0L)}, {"games", games}, {"owned", u["library"].size()}};
@@ -161,8 +162,8 @@ int main() {
   });
   svr.Get("/api/games", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto me = whoami(q); bool mod = isMod(me); json a = json::array();
-    for (auto& [k, g] : db["games"].items()) if (g.value("status", "approved") == "approved" || mod || g["owner"] == me) a.push_back(pub(g));
-    std::sort(a.begin(), a.end(), [](const json& x, const json& y) { return x["at"].get<long>() > y["at"].get<long>(); });
+    for (auto& [k, g] : db["games"].items()) if (g.value("status", "approved") == "approved" || mod || g.value("owner", "") == me) a.push_back(pub(g));
+    std::sort(a.begin(), a.end(), [](const json& x, const json& y) { return x.value("at", 0L) > y.value("at", 0L); });
     reply(r, 200, a);
   });
   svr.Post("/api/games", [&](const httplib::Request& q, httplib::Response& r) {
