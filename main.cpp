@@ -9,6 +9,7 @@
 #include <mutex>
 #include <map>
 #include <regex>
+#include <sstream>
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
@@ -44,6 +45,21 @@ static std::string whoami(const httplib::Request& q) {
 static std::string roleOf(const std::string& n) { return n.empty() ? "" : db["users"][n].value("role", "user"); }
 static bool isMod(const std::string& n) { auto r = roleOf(n); return r == "admin" || r == "mod"; }
 static bool isAdmin(const std::string& n) { return roleOf(n) == "admin"; }
+static json earned(const std::string& n) {
+  json b = json::array(); auto& u = db["users"][n]; std::string r = u.value("role", "user");
+  if (r == "admin") b.push_back("Admin"); if (r == "mod") b.push_back("Moderator");
+  json gr = u.value("granted", json::array()); for (auto& x : gr) b.push_back(x);
+  bool dev = false; for (auto& [k, g] : db["games"].items()) if (g["owner"] == n && g.value("status", "approved") == "approved") dev = true;
+  if (dev) b.push_back("Developer"); if (u["library"].size() >= 10) b.push_back("Collector");
+  return b;
+}
+static json shownBadges(const std::string& n) {
+  auto e = earned(n); json out = json::array(); json sh = db["users"][n].value("shown", json::array());
+  for (auto& x : sh) if (std::find(e.begin(), e.end(), x) != e.end() && out.size() < 3) out.push_back(x);
+  if (out.empty()) for (auto& x : e) if (out.size() < 3) out.push_back(x);
+  return out;
+}
+static std::string mimeOf(const std::string& p) { auto e = p.substr(p.find_last_of('.') + 1); return e == "png" ? "image/png" : e == "webp" ? "image/webp" : "image/jpeg"; }
 static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
 static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
 static long cents(const std::string& s) { try { return std::max(0L, std::lround(std::stod(s) * 100)); } catch (...) { return 0; } }
@@ -64,7 +80,7 @@ int main() {
     if (pw.size() < 8) return reply(r, 400, err("Password must be at least 8 characters"));
     if (db["users"].contains(lower(n))) return reply(r, 409, err("That username is taken"));
     std::string salt = randHex(16); std::string role = db["users"].empty() ? "admin" : "user";
-    db["users"][lower(n)] = {{"role", role}, {"name", n}, {"salt", salt}, {"hash", hashPw(pw, salt)}, {"balance", 0}, {"library", json::array()}};
+    db["users"][lower(n)] = {{"role", role}, {"joined", (long)time(nullptr)}, {"name", n}, {"salt", salt}, {"hash", hashPw(pw, salt)}, {"balance", 0}, {"library", json::array()}};
     save(); reply(r, 200, {{"ok", true}});
   });
   svr.Post("/api/login", [&](const httplib::Request& q, httplib::Response& r) {
@@ -94,6 +110,54 @@ int main() {
     if (!demoFunds) return reply(r, 403, err("Test funds are disabled"));
     auto& u = db["users"][n]; if (u["balance"].get<long>() >= 10000) return reply(r, 400, err("Wallet is already full of test funds"));
     u["balance"] = u["balance"].get<long>() + 2000; save(); reply(r, 200, {{"balance", u["balance"]}});
+  });
+  svr.Get(R"(/api/profile/(\w+))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); std::string n = lower(q.matches[1]), me = whoami(q);
+    if (!db["users"].contains(n)) return reply(r, 404, err("No such user"));
+    auto& u = db["users"][n]; std::string pr = u.value("presence", "online"); json games = json::array();
+    for (auto& [k, g] : db["games"].items()) if (g["owner"] == n && g.value("status", "approved") == "approved") games.push_back(pub(g));
+    json p = {{"name", u["name"]}, {"key", n}, {"role", u.value("role", "user")}, {"bio", u.value("bio", "")}, {"statusText", u.value("statusText", "")},
+      {"presence", (pr == "invisible" && me != n) ? "offline" : pr}, {"badges", shownBadges(n)}, {"hasAvatar", u.value("avatar", "") != ""}, {"hasBanner", u.value("banner", "") != ""},
+      {"joined", u.value("joined", 0L)}, {"games", games}, {"owned", u["library"].size()}};
+    if (me == n) { p["earned"] = earned(n); p["shown"] = shownBadges(n); }
+    reply(r, 200, p);
+  });
+  svr.Post("/api/profile", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (n.empty()) return reply(r, 401, err("Log in first"));
+    auto& u = db["users"][n]; auto F = [&](const char* k) { return q.get_file_value(k).content; };
+    if (q.has_file("bio")) { auto t = F("bio"); if (t.size() > 500) t.resize(500); u["bio"] = t; }
+    if (q.has_file("statusText")) { auto t = F("statusText"); if (t.size() > 80) t.resize(80); u["statusText"] = t; }
+    if (q.has_file("presence")) { auto p = F("presence"); if (p == "online" || p == "away" || p == "busy" || p == "invisible") u["presence"] = p; }
+    if (q.has_file("shown")) { json sh = json::array(); std::stringstream ss(F("shown")); std::string t; auto e = earned(n);
+      while (std::getline(ss, t, '|')) if (std::find(e.begin(), e.end(), t) != e.end() && sh.size() < 3) sh.push_back(t); u["shown"] = sh; }
+    std::string bad;
+    auto img = [&](const char* ff, const char* key, const char* rf, size_t lim) {
+      auto drop = [&]() { if (u.value(key, "") != "") fs::remove("data/files/" + u[key].get<std::string>()); };
+      if (F(rf) == "1") { drop(); u[key] = ""; }
+      if (!q.has_file(ff)) return;
+      auto c = q.get_file_value(ff); std::string ext = c.content_type == "image/png" ? ".png" : c.content_type == "image/jpeg" ? ".jpg" : c.content_type == "image/webp" ? ".webp" : "";
+      if (ext.empty()) { bad = "Images must be PNG, JPG or WebP"; return; }
+      if (c.content.size() > lim) { bad = "Image is too large"; return; }
+      drop(); std::string nm = randHex(12) + ext; std::ofstream("data/files/" + nm, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); u[key] = nm;
+    };
+    img("avatar", "avatar", "removeAvatar", 2u << 20); img("banner", "banner", "removeBanner", 5u << 20);
+    save(); if (!bad.empty()) return reply(r, 400, err(bad)); reply(r, 200, {{"ok", true}});
+  });
+  auto serveImg = [&](const httplib::Request& q, httplib::Response& r, const char* key) {
+    std::string path; { std::lock_guard<std::mutex> l(mu); std::string k = lower(q.matches[1]);
+      if (!db["users"].contains(k) || db["users"][k].value(key, "") == "") { r.status = 404; return; } path = "data/files/" + db["users"][k][key].get<std::string>(); }
+    std::ifstream f(path, std::ios::binary); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, mimeOf(path));
+  };
+  svr.Get(R"(/avatar/(\w+))", [&](const httplib::Request& q, httplib::Response& r) { serveImg(q, r, "avatar"); });
+  svr.Get(R"(/banner/(\w+))", [&](const httplib::Request& q, httplib::Response& r) { serveImg(q, r, "banner"); });
+  svr.Post("/api/admin/badge", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
+    auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string t = lower(b.value("username", "")), bd = b.value("badge", ""); bool give = b.value("grant", true);
+    if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    if (bd != "Founder" && bd != "Beta Tester" && bd != "Verified Dev" && bd != "Supporter") return reply(r, 400, err("Unknown badge"));
+    json out = json::array(); json cur = db["users"][t].value("granted", json::array()); for (auto& x : cur) if (x != bd) out.push_back(x);
+    if (give) out.push_back(bd); db["users"][t]["granted"] = out; save(); reply(r, 200, {{"ok", true}});
   });
   svr.Get("/api/games", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto me = whoami(q); bool mod = isMod(me); json a = json::array();
