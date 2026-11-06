@@ -1,0 +1,161 @@
+// NovaVault - a Steam-style game store server in C++17.
+// Accounts, wallet, store, library, APK/game uploads, owner-only downloads.
+#include "httplib.h"
+#include "json.hpp"
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <map>
+#include <regex>
+using json = nlohmann::json;
+namespace fs = std::filesystem;
+
+static json db = {{"users", json::object()}, {"games", json::object()}, {"next", 1}};
+static std::map<std::string, std::string> sessions; // token -> username
+static std::mutex mu;
+
+static std::string hex(const unsigned char* b, size_t n) {
+  static const char* d = "0123456789abcdef"; std::string s;
+  for (size_t i = 0; i < n; i++) { s += d[b[i] >> 4]; s += d[b[i] & 15]; }
+  return s;
+}
+static std::string randHex(size_t n) { std::string b(n, 0); RAND_bytes((unsigned char*)&b[0], (int)n); return hex((unsigned char*)b.data(), n); }
+static std::string hashPw(const std::string& pw, const std::string& salt) {
+  unsigned char out[32];
+  PKCS5_PBKDF2_HMAC(pw.c_str(), (int)pw.size(), (const unsigned char*)salt.data(), (int)salt.size(), 200000, EVP_sha256(), 32, out);
+  return hex(out, 32);
+}
+static void save() { { std::ofstream("data/db.tmp") << db.dump(); } fs::rename("data/db.tmp", "data/db.json"); }
+static std::string lower(std::string s) { for (auto& c : s) c = (char)tolower(c); return s; }
+static void reply(httplib::Response& r, int code, const json& j) { r.status = code; r.set_content(j.dump(), "application/json"); }
+static json err(const std::string& m) { return {{"error", m}}; }
+static long eff(const json& g) { long p = g.value("price", 0L), s = g.value("sale", 0L); return (s > 0 && s < p) ? s : p; }
+static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
+
+// Returns the logged-in username or "" (caller holds mu).
+static std::string whoami(const httplib::Request& q) {
+  std::string c = q.get_header_value("Cookie"); auto p = c.find("sid=");
+  if (p == std::string::npos) return "";
+  auto e = c.find(';', p); auto t = c.substr(p + 4, e == std::string::npos ? e : e - p - 4);
+  auto it = sessions.find(t); return it == sessions.end() ? "" : it->second;
+}
+static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
+static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
+static long cents(const std::string& s) { try { return std::max(0L, std::lround(std::stod(s) * 100)); } catch (...) { return 0; } }
+
+int main() {
+  fs::create_directories("data/files");
+  if (fs::exists("data/db.json")) { std::ifstream f("data/db.json"); db = json::parse(f, nullptr, false); if (db.is_discarded()) { fprintf(stderr, "db.json is corrupt\n"); return 1; } }
+  const bool demoFunds = !getenv("NO_DEMO_FUNDS"); // test money; disable once a real payment provider is wired in
+  httplib::Server svr;
+  svr.set_payload_max_length(2ULL << 30); // 2 GB uploads (held in memory while uploading)
+
+  svr.Post("/api/register", [&](const httplib::Request& q, httplib::Response& r) {
+    auto b = json::parse(q.body, nullptr, false); std::lock_guard<std::mutex> l(mu);
+    if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string n = b.value("username", ""), pw = b.value("password", "");
+    if (!std::regex_match(n, std::regex("[A-Za-z0-9_]{3,24}"))) return reply(r, 400, err("Username: 3-24 letters, numbers or _"));
+    if (pw.size() < 8) return reply(r, 400, err("Password must be at least 8 characters"));
+    if (db["users"].contains(lower(n))) return reply(r, 409, err("That username is taken"));
+    std::string salt = randHex(16);
+    db["users"][lower(n)] = {{"name", n}, {"salt", salt}, {"hash", hashPw(pw, salt)}, {"balance", 0}, {"library", json::array()}};
+    save(); reply(r, 200, {{"ok", true}});
+  });
+  svr.Post("/api/login", [&](const httplib::Request& q, httplib::Response& r) {
+    auto b = json::parse(q.body, nullptr, false); std::lock_guard<std::mutex> l(mu);
+    if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string n = lower(b.value("username", ""));
+    if (!db["users"].contains(n)) return reply(r, 401, err("Wrong username or password"));
+    auto& u = db["users"][n];
+    if (hashPw(b.value("password", ""), u["salt"]) != u["hash"]) return reply(r, 401, err("Wrong username or password"));
+    std::string t = randHex(24); sessions[t] = n;
+    r.set_header("Set-Cookie", "sid=" + t + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000");
+    reply(r, 200, {{"ok", true}});
+  });
+  svr.Post("/api/logout", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); std::string c = q.get_header_value("Cookie"); auto p = c.find("sid=");
+    if (p != std::string::npos) sessions.erase(c.substr(p + 4, 48));
+    r.set_header("Set-Cookie", "sid=; Path=/; Max-Age=0"); reply(r, 200, {{"ok", true}});
+  });
+  svr.Get("/api/me", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
+    if (n.empty()) return reply(r, 200, {{"user", nullptr}, {"demoFunds", demoFunds}});
+    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"balance", u["balance"]}, {"library", u["library"]}}}, {"demoFunds", demoFunds}});
+  });
+  svr.Post("/api/wallet/add", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
+    if (n.empty()) return reply(r, 401, err("Log in first"));
+    if (!demoFunds) return reply(r, 403, err("Test funds are disabled"));
+    auto& u = db["users"][n]; if (u["balance"].get<long>() >= 10000) return reply(r, 400, err("Wallet is already full of test funds"));
+    u["balance"] = u["balance"].get<long>() + 2000; save(); reply(r, 200, {{"balance", u["balance"]}});
+  });
+  svr.Get("/api/games", [&](const httplib::Request&, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); json a = json::array();
+    for (auto& [k, g] : db["games"].items()) a.push_back(pub(g));
+    std::sort(a.begin(), a.end(), [](const json& x, const json& y) { return x["at"].get<long>() > y["at"].get<long>(); });
+    reply(r, 200, a);
+  });
+  svr.Post("/api/games", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
+    if (n.empty()) return reply(r, 401, err("Log in to publish"));
+    if (!q.has_file("file")) return reply(r, 400, err("Choose a game or APK file"));
+    auto f = q.get_file_value("file"); std::string title = q.get_file_value("title").content;
+    if (title.empty() || f.content.empty()) return reply(r, 400, err("Title and file are required"));
+    int id = db["next"]; db["next"] = id + 1;
+    std::string stored = randHex(12); { std::ofstream o("data/files/" + stored, std::ios::binary); o.write(f.content.data(), (std::streamsize)f.content.size()); }
+    std::string cover;
+    if (q.has_file("cover")) {
+      auto c = q.get_file_value("cover"); std::string ext = c.content_type == "image/png" ? ".png" : c.content_type == "image/jpeg" ? ".jpg" : c.content_type == "image/webp" ? ".webp" : "";
+      if (!ext.empty() && c.content.size() < (8u << 20)) { cover = randHex(12) + ext; std::ofstream("data/files/" + cover, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); }
+    }
+    auto F = [&](const char* k) { return q.get_file_value(k).content; };
+    db["games"][std::to_string(id)] = {{"id", id}, {"title", title}, {"dev", db["users"][n]["name"]}, {"owner", n}, {"desc", F("desc")}, {"genre", F("genre")},
+      {"price", cents(F("price"))}, {"sale", cents(F("sale"))}, {"platform", F("platform")}, {"version", F("version")}, {"os", F("os")}, {"ram", F("ram")}, {"storage", F("storage")},
+      {"size", f.content.size()}, {"filename", safeName(f.filename)}, {"file", stored}, {"cover", cover}, {"at", (long)time(nullptr)}};
+    save(); reply(r, 200, {{"id", id}});
+  });
+  svr.Delete(R"(/api/games/(\d+))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
+    if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+    auto g = db["games"][id]; if (g["owner"] != n) return reply(r, 403, err("Only the developer can remove this game"));
+    fs::remove("data/files/" + g["file"].get<std::string>()); if (g["cover"] != "") fs::remove("data/files/" + g["cover"].get<std::string>());
+    db["games"].erase(id); save(); reply(r, 200, {{"ok", true}});
+  });
+  svr.Post(R"(/api/games/(\d+)/buy)", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
+    if (n.empty()) return reply(r, 401, err("Log in to get games"));
+    if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+    auto& g = db["games"][id]; auto& u = db["users"][n]; int gid = g["id"];
+    if (owns(u, gid)) return reply(r, 200, {{"ok", true}});
+    long p = eff(g);
+    if (u["balance"].get<long>() < p) return reply(r, 402, err("Not enough wallet funds"));
+    u["balance"] = u["balance"].get<long>() - p;
+    if (p > 0 && g["owner"] != n) { auto& d = db["users"][g["owner"].get<std::string>()]; d["balance"] = d["balance"].get<long>() + p; } // developer payout
+    u["library"].push_back(gid); save(); reply(r, 200, {{"ok", true}, {"balance", u["balance"]}});
+  });
+  svr.Get(R"(/download/(\d+))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::string path, name; size_t size = 0;
+    { std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
+      if (n.empty()) return reply(r, 401, err("Log in first"));
+      if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+      auto& g = db["games"][id]; if (!owns(db["users"][n], g["id"]) && g["owner"] != n) return reply(r, 403, err("Add this game to your library first"));
+      path = "data/files/" + g["file"].get<std::string>(); name = g["filename"]; size = g["size"]; }
+    r.set_header("Content-Disposition", "attachment; filename=\"" + name + "\"");
+    r.set_content_provider(size, "application/octet-stream", [path](size_t off, size_t len, httplib::DataSink& s) {
+      std::ifstream f(path, std::ios::binary); f.seekg((std::streamoff)off); std::vector<char> b(std::min(len, (size_t)1 << 20)); f.read(b.data(), (std::streamsize)b.size());
+      return s.write(b.data(), (size_t)f.gcount());
+    });
+  });
+  svr.Get(R"(/cover/(\d+))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::string path; { std::lock_guard<std::mutex> l(mu); std::string id = q.matches[1];
+      if (!db["games"].contains(id) || db["games"][id]["cover"] == "") { r.status = 404; return; } path = "data/files/" + db["games"][id]["cover"].get<std::string>(); }
+    std::ifstream f(path, std::ios::binary); std::string d((std::istreambuf_iterator<char>(f)), {});
+    r.set_content(d, path.size() > 4 && path.substr(path.size() - 4) == ".png" ? "image/png" : path.back() == 'p' ? "image/webp" : "image/jpeg");
+  });
+  svr.set_mount_point("/", "./web");
+  int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
+  printf("NovaVault running on http://localhost:%d\n", port);
+  svr.listen("0.0.0.0", port);
+}
