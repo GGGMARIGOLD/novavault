@@ -32,7 +32,7 @@ static std::string lower(std::string s) { for (auto& c : s) c = (char)tolower(c)
 static void reply(httplib::Response& r, int code, const json& j) { r.status = code; r.set_content(j.dump(), "application/json"); }
 static json err(const std::string& m) { return {{"error", m}}; }
 static long eff(const json& g) { long p = g.value("price", 0L), s = g.value("sale", 0L); return (s > 0 && s < p) ? s : p; }
-static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
+static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o["status"] = g.value("status", "approved"); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
 
 // Returns the logged-in username or "" (caller holds mu).
 static std::string whoami(const httplib::Request& q) {
@@ -41,6 +41,9 @@ static std::string whoami(const httplib::Request& q) {
   auto e = c.find(';', p); auto t = c.substr(p + 4, e == std::string::npos ? e : e - p - 4);
   auto it = sessions.find(t); return it == sessions.end() ? "" : it->second;
 }
+static std::string roleOf(const std::string& n) { return n.empty() ? "" : db["users"][n].value("role", "user"); }
+static bool isMod(const std::string& n) { auto r = roleOf(n); return r == "admin" || r == "mod"; }
+static bool isAdmin(const std::string& n) { return roleOf(n) == "admin"; }
 static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
 static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
 static long cents(const std::string& s) { try { return std::max(0L, std::lround(std::stod(s) * 100)); } catch (...) { return 0; } }
@@ -48,6 +51,7 @@ static long cents(const std::string& s) { try { return std::max(0L, std::lround(
 int main() {
   fs::create_directories("data/files");
   if (fs::exists("data/db.json")) { std::ifstream f("data/db.json"); db = json::parse(f, nullptr, false); if (db.is_discarded()) { fprintf(stderr, "db.json is corrupt\n"); return 1; } }
+  if (const char* a = getenv("ADMIN_USER")) { auto k = lower(a); if (db["users"].contains(k)) { db["users"][k]["role"] = "admin"; save(); printf("%s is an admin\n", a); } }
   const bool demoFunds = !getenv("NO_DEMO_FUNDS"); // test money; disable once a real payment provider is wired in
   httplib::Server svr;
   svr.set_payload_max_length(2ULL << 30); // 2 GB uploads (held in memory while uploading)
@@ -59,8 +63,8 @@ int main() {
     if (!std::regex_match(n, std::regex("[A-Za-z0-9_]{3,24}"))) return reply(r, 400, err("Username: 3-24 letters, numbers or _"));
     if (pw.size() < 8) return reply(r, 400, err("Password must be at least 8 characters"));
     if (db["users"].contains(lower(n))) return reply(r, 409, err("That username is taken"));
-    std::string salt = randHex(16);
-    db["users"][lower(n)] = {{"name", n}, {"salt", salt}, {"hash", hashPw(pw, salt)}, {"balance", 0}, {"library", json::array()}};
+    std::string salt = randHex(16); std::string role = db["users"].empty() ? "admin" : "user";
+    db["users"][lower(n)] = {{"role", role}, {"name", n}, {"salt", salt}, {"hash", hashPw(pw, salt)}, {"balance", 0}, {"library", json::array()}};
     save(); reply(r, 200, {{"ok", true}});
   });
   svr.Post("/api/login", [&](const httplib::Request& q, httplib::Response& r) {
@@ -82,7 +86,7 @@ int main() {
   svr.Get("/api/me", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
     if (n.empty()) return reply(r, 200, {{"user", nullptr}, {"demoFunds", demoFunds}});
-    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"balance", u["balance"]}, {"library", u["library"]}}}, {"demoFunds", demoFunds}});
+    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}}}, {"demoFunds", demoFunds}});
   });
   svr.Post("/api/wallet/add", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
@@ -91,9 +95,9 @@ int main() {
     auto& u = db["users"][n]; if (u["balance"].get<long>() >= 10000) return reply(r, 400, err("Wallet is already full of test funds"));
     u["balance"] = u["balance"].get<long>() + 2000; save(); reply(r, 200, {{"balance", u["balance"]}});
   });
-  svr.Get("/api/games", [&](const httplib::Request&, httplib::Response& r) {
-    std::lock_guard<std::mutex> l(mu); json a = json::array();
-    for (auto& [k, g] : db["games"].items()) a.push_back(pub(g));
+  svr.Get("/api/games", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto me = whoami(q); bool mod = isMod(me); json a = json::array();
+    for (auto& [k, g] : db["games"].items()) if (g.value("status", "approved") == "approved" || mod || g["owner"] == me) a.push_back(pub(g));
     std::sort(a.begin(), a.end(), [](const json& x, const json& y) { return x["at"].get<long>() > y["at"].get<long>(); });
     reply(r, 200, a);
   });
@@ -113,7 +117,7 @@ int main() {
     auto F = [&](const char* k) { return q.get_file_value(k).content; };
     db["games"][std::to_string(id)] = {{"id", id}, {"title", title}, {"dev", db["users"][n]["name"]}, {"owner", n}, {"desc", F("desc")}, {"genre", F("genre")},
       {"price", cents(F("price"))}, {"sale", cents(F("sale"))}, {"platform", F("platform")}, {"version", F("version")}, {"os", F("os")}, {"ram", F("ram")}, {"storage", F("storage")},
-      {"size", f.content.size()}, {"filename", safeName(f.filename)}, {"file", stored}, {"cover", cover}, {"at", (long)time(nullptr)}};
+      {"size", f.content.size()}, {"filename", safeName(f.filename)}, {"file", stored}, {"cover", cover}, {"at", (long)time(nullptr)}, {"status", isMod(n) ? "approved" : "pending"}};
     save(); reply(r, 200, {{"id", id}});
   });
   svr.Delete(R"(/api/games/(\d+))", [&](const httplib::Request& q, httplib::Response& r) {
@@ -128,6 +132,7 @@ int main() {
     if (n.empty()) return reply(r, 401, err("Log in to get games"));
     if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
     auto& g = db["games"][id]; auto& u = db["users"][n]; int gid = g["id"];
+    if (g.value("status", "approved") != "approved") return reply(r, 403, err("This game is not approved yet"));
     if (owns(u, gid)) return reply(r, 200, {{"ok", true}});
     long p = eff(g);
     if (u["balance"].get<long>() < p) return reply(r, 402, err("Not enough wallet funds"));
@@ -140,7 +145,7 @@ int main() {
     { std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
       if (n.empty()) return reply(r, 401, err("Log in first"));
       if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
-      auto& g = db["games"][id]; if (!owns(db["users"][n], g["id"]) && g["owner"] != n) return reply(r, 403, err("Add this game to your library first"));
+      auto& g = db["games"][id]; if (!owns(db["users"][n], g["id"]) && g["owner"] != n && !isMod(n)) return reply(r, 403, err("Add this game to your library first"));
       path = "data/files/" + g["file"].get<std::string>(); name = g["filename"]; size = g["size"]; }
     r.set_header("Content-Disposition", "attachment; filename=\"" + name + "\"");
     r.set_content_provider(size, "application/octet-stream", [path](size_t off, size_t len, httplib::DataSink& s) {
@@ -154,7 +159,41 @@ int main() {
     std::ifstream f(path, std::ios::binary); std::string d((std::istreambuf_iterator<char>(f)), {});
     r.set_content(d, path.size() > 4 && path.substr(path.size() - 4) == ".png" ? "image/png" : path.back() == 'p' ? "image/webp" : "image/jpeg");
   });
-  svr.set_mount_point("/", "./web");
+  auto setStatus = [&](const httplib::Request& q, httplib::Response& r, const char* st) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
+    if (!isMod(n)) return reply(r, 403, err("Moderators only"));
+    std::string id = q.matches[1]; if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+    auto& g = db["games"][id]; g["status"] = st; auto b = json::parse(q.body, nullptr, false);
+    g["reason"] = (b.is_object() && std::string(st) == "rejected") ? b.value("reason", "") : "";
+    save(); reply(r, 200, {{"ok", true}});
+  };
+  svr.Post(R"(/api/mod/games/(\d+)/approve)", [&](const httplib::Request& q, httplib::Response& r) { setStatus(q, r, "approved"); });
+  svr.Post(R"(/api/mod/games/(\d+)/reject)", [&](const httplib::Request& q, httplib::Response& r) { setStatus(q, r, "rejected"); });
+  svr.Get("/api/admin/users", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
+    json a = json::array(); for (auto& [k, u] : db["users"].items()) a.push_back({{"name", u["name"]}, {"role", u.value("role", "user")}, {"balance", u["balance"]}});
+    reply(r, 200, a);
+  });
+  svr.Post("/api/admin/credits", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
+    auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string t = lower(b.value("username", "")); double amt = b.value("amount", 0.0);
+    if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    if (!(std::abs(amt) <= 100000)) return reply(r, 400, err("Amount must be between -100000 and 100000"));
+    auto& u = db["users"][t]; u["balance"] = std::max(0L, u["balance"].get<long>() + std::lround(amt * 100)); save(); reply(r, 200, {{"balance", u["balance"]}});
+  });
+  svr.Post("/api/admin/role", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
+    auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string t = lower(b.value("username", "")), role = b.value("role", "");
+    if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    if (role != "user" && role != "mod") return reply(r, 400, err("Role must be user or mod"));
+    if (isAdmin(t)) return reply(r, 400, err("Admin role can't be changed here"));
+    db["users"][t]["role"] = role; save(); reply(r, 200, {{"ok", true}});
+  });
+  // Serve the site from ./web, or from ./index.html if the web folder doesn't exist.
+  if (fs::exists("web/index.html")) svr.set_mount_point("/", "./web");
+  else svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_content(d, "text/html"); });
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
   printf("NovaVault running on http://localhost:%d\n", port);
   svr.listen("0.0.0.0", port);
