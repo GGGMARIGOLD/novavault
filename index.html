@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NovaVault</title>
+<style>
+:root{--top:#171a21;--bg:#1b2838;--panel:#16202d;--line:#2a475e;--text:#c7d5e0;--bright:#fff;--blue:#66c0f4;--green:#5c7e10;--green2:#a4d007}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(#1b2838,#0f1923 600px) fixed;color:var(--text);font:14px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--blue);text-decoration:none}
+header{background:var(--top);position:sticky;top:0;z-index:9}
+.bar{max-width:1100px;margin:auto;display:flex;align-items:center;gap:6px;padding:0 16px;height:56px}
+.logo{font:800 24px Georgia,serif;color:var(--bright);margin-right:18px;letter-spacing:.5px;cursor:pointer}
+.bar a.t{color:#b8b6b4;padding:8px 12px;font-weight:600;font-size:15px;cursor:pointer}.bar a.t:hover{color:var(--bright)}
+.sp{flex:1}.me{color:#b8b6b4;font-size:13px}
+input,select,textarea{background:#316282;background:rgba(0,0,0,.35);border:1px solid #000;border-radius:3px;color:var(--bright);padding:8px 10px;font:inherit;width:100%}
+button,.btn{border:0;border-radius:2px;padding:8px 16px;font:600 14px inherit;cursor:pointer;color:var(--bright);background:rgba(103,193,245,.2);text-decoration:none;display:inline-block;text-align:center}
+button:hover,.btn:hover{background:rgba(103,193,245,.4)}
+.buy{background:linear-gradient(90deg,var(--green2),var(--green));color:#d2efa9}.buy:hover{background:linear-gradient(90deg,#b6e60a,#6d9112)}
+main{max-width:1100px;margin:auto;padding:24px 16px 60px}
+h1,h2{color:var(--bright);font-weight:400;margin:0 0 12px}h1{font-size:30px}h2{font-size:18px;text-transform:none;border-bottom:1px solid var(--line);padding-bottom:6px;margin-top:28px}
+.feat{display:grid;grid-template-columns:2fr 1fr;gap:0;background:var(--panel);border-radius:3px;overflow:hidden;margin-bottom:20px;cursor:pointer}
+.feat .img{aspect-ratio:16/9;background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:18px;font:700 34px Georgia,serif;color:#fff;text-shadow:0 2px 10px #000}
+.feat .side{padding:20px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(135deg,#1e3a52,#16202d)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.card{background:var(--panel);border-radius:3px;overflow:hidden;cursor:pointer}.card:hover{background:#22364a}
+.card .img{aspect-ratio:16/9;background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:8px;font:700 18px Georgia,serif;color:#fff;text-shadow:0 2px 8px #000}
+.card .b{padding:10px 12px}.card .n{color:var(--bright);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card .m{font-size:12px;color:#8f98a0;display:flex;justify-content:space-between;align-items:center}
+.pr{background:rgba(0,0,0,.4);padding:2px 8px;border-radius:2px;color:var(--bright);font-size:13px}.pr s{color:#738895;margin-right:6px}.pr b{color:var(--green2);font-weight:600}.dc{background:#4c6b22;color:var(--green2);padding:2px 6px;margin-right:6px;font-weight:700}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}.chip{padding:5px 12px;background:rgba(103,193,245,.1);cursor:pointer;border-radius:2px}.chip.on{background:var(--blue);color:#06121c}
+.game{display:grid;grid-template-columns:1fr 320px;gap:24px}@media(max-width:800px){.game,.feat{grid-template-columns:1fr}}
+.game .img{aspect-ratio:16/9;background-size:cover;background-position:center;border-radius:3px;display:flex;align-items:flex-end;padding:18px;font:700 40px Georgia,serif;color:#fff;text-shadow:0 2px 10px #000}
+.box{background:var(--panel);padding:16px;border-radius:3px}.box+.box{margin-top:14px}
+table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px solid #22364a}td:first-child{color:#8f98a0;width:38%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;margin:12px 0 4px;color:#8f98a0}
+.lib{display:flex;align-items:center;gap:14px;background:var(--panel);padding:10px;margin-bottom:8px;border-radius:3px}.lib .img{width:120px;aspect-ratio:16/9;background-size:cover;background-position:center;border-radius:2px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#000c;color:#fff;padding:10px 18px;border-radius:4px;z-index:20}
+.empty{padding:40px;text-align:center;color:#8f98a0}progress{width:100%;height:10px}
+</style></head><body>
+<header><div class="bar"><span class="logo" onclick="go('')">NOVAVAULT</span><a class="t" onclick="go('')">Store</a><a class="t" onclick="go('library')">Library</a><a class="t" onclick="go('publish')">Publish</a><span class="sp"></span><span id="acct"></span></div></header>
+<main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const usd=c=>c?"$"+(c/100).toFixed(2):"Free",eff=g=>g.sale>0&&g.sale<g.price?g.sale:g.price;
+let me=null,demoFunds=false,games=[],genre="All",q="";
+const GR=["#2b5876,#4e4376","#614385,#516395","#134e5e,#71b280","#42275a,#734b6d","#8e2de2,#4a00e0","#cb2d3e,#ef473a"];
+const art=g=>g.hasCover?`background-image:linear-gradient(transparent 55%,#000a),url(/cover/${g.id})`:`background:linear-gradient(135deg,${GR[g.id%GR.length]})`;
+const sz=b=>b>=1e9?(b/1e9).toFixed(2)+" GB":(b/1e6).toFixed(1)+" MB";
+function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)}
+async function api(p,o={}){const r=await fetch(p,o),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Request failed");return j}
+const post=(p,b)=>api(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});
+const go=h=>{location.hash="#/"+h};
+function price(g){return g.sale>0&&g.sale<g.price?`<span class="pr"><span class="dc">-${Math.round(100-g.sale/g.price*100)}%</span><s>${usd(g.price)}</s><b>${usd(g.sale)}</b></span>`:`<span class="pr">${usd(g.price)}</span>`}
+const card=g=>`<div class="card" onclick="go('game/${g.id}')"><div class="img" style="${art(g)}">${g.hasCover?"":esc(g.title)}</div><div class="b"><div class="n">${esc(g.title)}</div><div class="m"><span>${esc(g.genre||g.platform)}</span>${price(g)}</div></div></div>`;
+async function refresh(){const [m,g]=await Promise.all([api("/api/me"),api("/api/games")]);me=m.user;demoFunds=m.demoFunds;games=g;
+ $("#acct").innerHTML=me?`<span class="me">${esc(me.name)} · ${usd(me.balance)}</span> <button onclick="addFunds()" ${demoFunds?"":"hidden"}>+ Add test funds</button> <button onclick="logout()">Log out</button>`:`<button onclick="go('login')">Log in</button>`}
+async function addFunds(){try{await post("/api/wallet/add");toast("Added $20 test funds");route()}catch(e){toast(e.message)}}
+async function logout(){await post("/api/logout");go("");route()}
+async function route(){await refresh();const p=location.hash.replace(/^#\//,"").split("/"),v=p[0];
+ if(v==="game")return gamePage(+p[1]);if(v==="library")return libPage();if(v==="publish")return pubPage();if(v==="login")return authPage();storePage()}
+function storePage(){const gs=[...new Set(games.map(g=>g.genre).filter(Boolean))],list=games.filter(g=>(genre==="All"||g.genre===genre)&&(g.title+g.dev).toLowerCase().includes(q.toLowerCase())),f=games[0];
+ $("#app").innerHTML=(f&&!q&&genre==="All"?`<div class="feat" onclick="go('game/${f.id}')"><div class="img" style="${art(f)}">${f.hasCover?"":esc(f.title)}</div><div class="side"><h1>${esc(f.title)}</h1><div>${esc((f.desc||"").slice(0,160))}</div><div>${price(f)}</div><span class="btn buy">View game</span></div></div>`:"")+
+ `<input id="s" placeholder="Search games or developers" value="${esc(q)}"><div class="chips">${["All",...gs].map(x=>`<span class="chip ${x===genre?"on":""}" onclick="genre='${esc(x)}';storePage()">${esc(x)}</span>`).join("")}</div>`+
+ (list.length?`<div class="grid">${list.map(card).join("")}</div>`:`<div class="empty">${games.length?"No games match your search.":"The store is empty. Publish the first game."}</div>`);
+ const s=$("#s");s.oninput=()=>{q=s.value;const c=s.selectionStart;storePage();$("#s").focus();$("#s").setSelectionRange(c,c)}}
+function gamePage(id){const g=games.find(x=>x.id===id);if(!g)return $("#app").innerHTML='<div class="empty">Game not found.</div>';
+ const own=me&&(me.library.includes(id)||g.owner===me.name.toLowerCase()),r=[["Platform",g.platform],["Version",g.version],["Download size",sz(g.size)],["OS",g.os],["RAM",g.ram],["Storage",g.storage]];
+ $("#app").innerHTML=`<h1>${esc(g.title)}</h1><div class="game"><div><div class="img" style="${art(g)}">${g.hasCover?"":esc(g.title)}</div><div class="box" style="margin-top:14px"><p style="white-space:pre-wrap;margin:0">${esc(g.desc)||"No description."}</p></div></div>
+ <div><div class="box"><div style="margin-bottom:12px">${price(g)}</div>${own?`<a class="btn buy" style="width:100%" href="/download/${id}">Download ${esc(g.filename||"")}</a>`:`<button class="btn buy" style="width:100%" id="b">${eff(g)?"Buy for "+usd(eff(g)):"Add to library"}</button>`}
+ ${me&&g.owner===me.name.toLowerCase()?`<button style="width:100%;margin-top:8px" id="d">Remove my game</button>`:""}</div>
+ <div class="box"><b style="color:#fff">System requirements</b><table>${r.map(([k,v])=>`<tr><td>${k}</td><td>${esc(v)||"—"}</td></tr>`).join("")}</table><p style="margin:10px 0 0;color:#8f98a0">Developer: ${esc(g.dev)}</p></div></div></div>`;
+ const b=$("#b");if(b)b.onclick=async()=>{if(!me)return go("login");try{await post(`/api/games/${id}/buy`);toast("Added to your library");route()}catch(e){toast(e.message)}};
+ const d=$("#d");if(d)d.onclick=async()=>{if(confirm("Remove this game permanently?")){await api("/api/games/"+id,{method:"DELETE"});go("");}}}
+function libPage(){if(!me)return go("login");const l=games.filter(g=>me.library.includes(g.id)||g.owner===me.name.toLowerCase());
+ $("#app").innerHTML=`<h1>Library</h1>`+(l.length?l.map(g=>`<div class="lib"><div class="img" style="${art(g)}"></div><div style="flex:1"><div style="color:#fff;font-size:16px">${esc(g.title)}</div><div style="color:#8f98a0">${esc(g.platform)} · ${esc(g.version)} · ${sz(g.size)}</div></div><a class="btn buy" href="/download/${g.id}">Download</a></div>`).join(""):'<div class="empty">Your library is empty. Browse the store to add games.</div>')}
+function authPage(){$("#app").innerHTML=`<div class="box" style="max-width:380px;margin:30px auto"><h1>Sign in</h1><label>Username</label><input id="u" autocomplete="username"><label>Password (8+ characters)</label><input id="p" type="password" autocomplete="current-password"><div class="row" style="margin-top:16px"><button class="buy" id="li">Log in</button><button id="rg">Create account</button></div></div>`;
+ const run=async(path)=>{try{await post(path,{username:$("#u").value,password:$("#p").value});if(path==="/api/register")await post("/api/login",{username:$("#u").value,password:$("#p").value});go("");}catch(e){toast(e.message)}};$("#li").onclick=()=>run("/api/login");$("#rg").onclick=()=>run("/api/register")}
+function pubPage(){if(!me)return go("login");const F=(id,l,x="")=>`<div><label>${l}</label><input id="${id}" ${x}></div>`;
+ $("#app").innerHTML=`<h1>Publish a game</h1><div class="box"><label>Game or APK file</label><input type="file" id="file"><div class="row">${F("title","Title")}${F("genre","Genre","placeholder='Action, Puzzle…'")}</div><label>Description</label><textarea id="desc" rows="4"></textarea>
+ <div class="row">${F("price","Price (USD, 0 = free)",'type="number" min="0" step="0.01" value="0"')}${F("sale","Sale price (optional)",'type="number" min="0" step="0.01"')}</div>
+ <div class="row"><div><label>Platform</label><select id="platform"><option>Android</option><option>Windows</option><option>macOS</option><option>Linux</option></select></div>${F("version","Version","placeholder='1.0.0'")}</div>
+ <div class="row">${F("os","Minimum OS","placeholder='Android 8.0+'")}${F("ram","RAM","placeholder='3 GB'")}</div>${F("storage","Storage required","placeholder='200 MB'")}<label>Cover image (PNG, JPG, WebP)</label><input type="file" id="cover" accept="image/png,image/jpeg,image/webp">
+ <p style="margin-top:16px"><button class="buy" id="go">Upload and publish</button></p><progress id="pg" value="0" max="1" hidden></progress></div>`;
+ $("#go").onclick=()=>{const f=$("#file").files[0];if(!f||!$("#title").value.trim())return toast("Choose a file and enter a title");const fd=new FormData();
+  ["title","genre","desc","price","sale","platform","version","os","ram","storage"].forEach(k=>fd.append(k,$("#"+k).value));fd.append("file",f);if($("#cover").files[0])fd.append("cover",$("#cover").files[0]);
+  const x=new XMLHttpRequest();x.open("POST","/api/games");$("#pg").hidden=false;x.upload.onprogress=e=>{$("#pg").value=e.loaded/e.total};
+  x.onload=()=>{const j=JSON.parse(x.responseText||"{}");x.status===200?(toast("Published"),go("game/"+j.id)):toast(j.error||"Upload failed")};x.onerror=()=>toast("Upload failed");x.send(fd)}}
+addEventListener("hashchange",route);route();
+</script></body></html>
