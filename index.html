@@ -14,6 +14,10 @@ input,select,textarea{background:#316282;background:rgba(0,0,0,.35);border:1px s
 button,.btn{border:0;border-radius:2px;padding:8px 16px;font:600 14px inherit;cursor:pointer;color:var(--bright);background:rgba(103,193,245,.2);text-decoration:none;display:inline-block;text-align:center}
 button:hover,.btn:hover{background:rgba(103,193,245,.4)}
 .buy{background:linear-gradient(90deg,var(--green2),var(--green));color:#d2efa9}.buy:hover{background:linear-gradient(90deg,#b6e60a,#6d9112)}
+#dock{position:fixed;left:12px;bottom:12px;z-index:15;background:var(--top);border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px #0009;max-width:300px}
+#dock .av{width:40px;height:40px;border-radius:4px;background:#0f1923 center/cover;display:flex;align-items:center;justify-content:center;font:700 18px Georgia,serif;color:#fff;cursor:pointer;flex:none}
+#dock .nm{color:var(--bright);font-weight:600;cursor:pointer;line-height:1.2}#dock .st{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+#dock button{padding:4px 8px;font-size:12px}
 main{max-width:1100px;margin:auto;padding:24px 16px 60px}
 h1,h2{color:var(--bright);font-weight:400;margin:0 0 12px}h1{font-size:30px}h2{font-size:18px;text-transform:none;border-bottom:1px solid var(--line);padding-bottom:6px;margin-top:28px}
 .feat{display:grid;grid-template-columns:2fr 1fr;gap:0;background:var(--panel);border-radius:3px;overflow:hidden;margin-bottom:20px;cursor:pointer}
@@ -36,6 +40,7 @@ table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px sol
 </style></head><body>
 <header><div class="bar"><span class="logo" onclick="go('')">NOVAVAULT</span><a class="t" onclick="go('')">Store</a><a class="t" onclick="go('library')">Library</a><a class="t" onclick="go('publish')">Publish</a><a class="t" id="modlink" onclick="go('admin')" hidden></a><span class="sp"></span><span id="acct"></span></div></header>
 <main id="app"></main>
+<div id="dock"></div>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const usd=c=>c?"$"+(c/100).toFixed(2):"Free",eff=g=>g.sale>0&&g.sale<g.price?g.sale:g.price;
@@ -50,8 +55,11 @@ const post=(p,b)=>api(p,{method:"POST",headers:{"Content-Type":"application/json
 const go=h=>{location.hash="#/"+h};
 function price(g){return g.sale>0&&g.sale<g.price?`<span class="pr"><span class="dc">-${Math.round(100-g.sale/g.price*100)}%</span><s>${usd(g.price)}</s><b>${usd(g.sale)}</b></span>`:`<span class="pr">${usd(g.price)}</span>`}
 const card=g=>`<div class="card" onclick="go('game/${g.id}')"><div class="img" style="${art(g)}">${g.hasCover?"":esc(g.title)}</div><div class="b"><div class="n">${esc(g.title)}</div><div class="m"><span>${esc(g.genre||g.platform)}</span>${price(g)}</div></div></div>`;
-async function refresh(){const [m,g]=await Promise.all([api("/api/me"),api("/api/games")]);me=m.user;demoFunds=m.demoFunds;games=g;const ml=$("#modlink");ml.hidden=!(me&&["mod","admin"].includes(me.role));ml.textContent=me&&me.role==="admin"?"Admin":"Moderation";
- $("#acct").innerHTML=me?`<img src="/avatar/${encodeURIComponent(me.name)}" onerror="this.remove()" style="width:28px;height:28px;border-radius:3px;vertical-align:middle;margin-right:6px"><a class="me" style="cursor:pointer" onclick="go('profile/${esc(me.name)}')">${esc(me.name)}</a> <span class="me">· ${usd(me.balance)}</span> <button onclick="addFunds()" ${demoFunds?"":"hidden"}>+ Add test funds</button> <button onclick="logout()">Log out</button>`:`<button onclick="go('login')">Log in</button>`}
+async function refresh(){const [m,g]=await Promise.all([api("/api/me"),api("/api/games")]);me=m.user;demoFunds=m.demoFunds;games=g;let mp=null;if(me){try{mp=await api("/api/profile/"+encodeURIComponent(me.name))}catch(e){}}
+ const pr=mp?PRES[mp.presence]||PRES.online:PRES.online,t=Date.now();
+ $("#dock").innerHTML=me?`<div class="av" style="${mp&&mp.hasAvatar?`background-image:url(/avatar/${encodeURIComponent(me.name)}?t=${t})`:""}" onclick="go('profile/${esc(me.name)}')">${mp&&mp.hasAvatar?"":esc(me.name[0].toUpperCase())}</div><div><div class="nm" onclick="go('profile/${esc(me.name)}')">${esc(me.name)}</div><div class="st" style="color:${pr[1]}">● ${pr[0]}${mp&&mp.statusText?" · "+esc(mp.statusText):""}</div></div><button onclick="go('settings')">Edit</button>`:`<div class="nm" onclick="go('login')">Log in to see your profile</div>`;
+ const ml=$("#modlink");ml.hidden=!(me&&["mod","admin"].includes(me.role));ml.textContent=me&&me.role==="admin"?"Admin":"Moderation";
+ $("#acct").innerHTML=me?`<span class="me">Wallet ${usd(me.balance)}</span> <button onclick="addFunds()" ${demoFunds?"":"hidden"}>+ Add test funds</button> <button onclick="logout()">Log out</button>`:`<button onclick="go('login')">Log in</button>`}
 async function addFunds(){try{await post("/api/wallet/add");toast("Added $20 test funds");route()}catch(e){toast(e.message)}}
 async function logout(){await post("/api/logout");go("");route()}
 async function route(){await refresh();const p=location.hash.replace(/^#\//,"").split("/"),v=p[0];

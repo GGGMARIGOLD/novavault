@@ -255,9 +255,9 @@ int main() {
     if (isAdmin(t)) return reply(r, 400, err("Admin role can't be changed here"));
     db["users"][t]["role"] = role; save(); reply(r, 200, {{"ok", true}});
   });
-  // Serve the site from ./web, or from ./index.html if the web folder doesn't exist.
-  if (fs::exists("web/index.html")) svr.set_mount_point("/", "./web");
-  else svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_content(d, "text/html"); });
+  // Serve ./index.html if present (GitHub layout), otherwise the ./web folder.
+  if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, "text/html"); });
+  else svr.set_mount_point("/", "./web");
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
   printf("NovaVault running on http://localhost:%d\n", port);
   svr.listen("0.0.0.0", port);
