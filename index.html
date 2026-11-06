@@ -14,8 +14,14 @@ input,select,textarea{background:#316282;background:rgba(0,0,0,.35);border:1px s
 button,.btn{border:0;border-radius:2px;padding:8px 16px;font:600 14px inherit;cursor:pointer;color:var(--bright);background:rgba(103,193,245,.2);text-decoration:none;display:inline-block;text-align:center}
 button:hover,.btn:hover{background:rgba(103,193,245,.4)}
 .buy{background:linear-gradient(90deg,var(--green2),var(--green));color:#d2efa9}.buy:hover{background:linear-gradient(90deg,#b6e60a,#6d9112)}
+.pe{display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start}@media(max-width:800px){.pe{grid-template-columns:1fr}}
+.pcard{background:#111a26;border:1px solid var(--line);border-radius:10px;overflow:hidden;position:sticky;top:76px}.pbn{height:110px;cursor:pointer}
+.pbody{padding:0 16px 16px}.pav{width:88px;height:88px;border-radius:50%;border:6px solid #111a26;margin-top:-46px;background:#0f1923 center/cover;position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;font:700 34px Georgia,serif;color:#fff}
+.pav i{position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;border:4px solid #111a26}
+.pname{font-size:20px;font-weight:700;color:#fff;margin-top:6px}.pstat{color:var(--text);min-height:18px}hr{border:0;border-top:1px solid var(--line);margin:14px 0}.pbio{white-space:pre-wrap;margin-top:4px;word-break:break-word}
+#savebar{position:fixed;right:12px;bottom:12px;z-index:16;background:#0b121b;border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 4px 18px #000a}
 #dock{position:fixed;left:12px;bottom:12px;z-index:15;background:var(--top);border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px #0009;max-width:300px}
-#dock .av{width:40px;height:40px;border-radius:4px;background:#0f1923 center/cover;display:flex;align-items:center;justify-content:center;font:700 18px Georgia,serif;color:#fff;cursor:pointer;flex:none}
+#dock .av{width:40px;height:40px;border-radius:50%;background:#0f1923 center/cover;display:flex;align-items:center;justify-content:center;font:700 18px Georgia,serif;color:#fff;cursor:pointer;flex:none}
 #dock .nm{color:var(--bright);font-weight:600;cursor:pointer;line-height:1.2}#dock .st{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 #dock button{padding:4px 8px;font-size:12px}
 main{max-width:1100px;margin:auto;padding:24px 16px 60px}
@@ -106,21 +112,37 @@ const badgeHtml=b=>`<span class="chip" style="background:${BC[b]||"#555"};color:
 async function profilePage(name){let p;try{p=await api("/api/profile/"+encodeURIComponent(name))}catch(e){return $("#app").innerHTML='<div class="empty">Profile not found.</div>'}
  const mine=me&&me.name.toLowerCase()===p.key,t=Date.now(),pr=PRES[p.presence]||PRES.online;
  $("#app").innerHTML=`<div class="box" style="padding:0;overflow:hidden"><div style="height:200px;background:${p.hasBanner?`url(/banner/${p.key}?t=${t}) center/cover`:"linear-gradient(135deg,#2b5876,#4e4376)"}"></div>
- <div style="display:flex;gap:18px;padding:0 20px 20px;margin-top:-46px;flex-wrap:wrap;align-items:flex-end"><div style="width:128px;height:128px;border-radius:4px;border:4px solid var(--panel);background:#0f1923 ${p.hasAvatar?`url(/avatar/${p.key}?t=${t}) center/cover`:""};display:flex;align-items:center;justify-content:center;font:700 52px Georgia,serif;color:#fff">${p.hasAvatar?"":esc(p.name[0].toUpperCase())}</div>
+ <div style="display:flex;gap:18px;padding:0 20px 20px;margin-top:-46px;flex-wrap:wrap;align-items:flex-end"><div style="width:128px;height:128px;border-radius:50%;border:4px solid var(--panel);background:#0f1923 ${p.hasAvatar?`url(/avatar/${p.key}?t=${t}) center/cover`:""};display:flex;align-items:center;justify-content:center;font:700 52px Georgia,serif;color:#fff">${p.hasAvatar?"":esc(p.name[0].toUpperCase())}</div>
  <div style="flex:1;min-width:200px"><h1 style="margin:0">${esc(p.name)}</h1><div style="color:${pr[1]}">● ${pr[0]}${p.statusText?` <span style="color:var(--text)">· ${esc(p.statusText)}</span>`:""}</div></div>${mine?`<button onclick="go('settings')">Edit profile</button>`:""}</div></div>
  <div class="game" style="margin-top:16px"><div><div class="box"><b style="color:#fff">About</b><p style="white-space:pre-wrap;margin:8px 0 0">${esc(p.bio)||"This user hasn't written a bio yet."}</p></div>${p.games.length?`<h2>Games by ${esc(p.name)}</h2><div class="grid">${p.games.map(card).join("")}</div>`:""}</div>
  <div class="box"><b style="color:#fff">Badges</b><div class="chips">${p.badges.length?p.badges.map(badgeHtml).join(""):'<span style="color:#8f98a0">No badges yet</span>'}</div><div style="color:#8f98a0">Games owned: ${p.owned}${p.joined?" · Joined "+new Date(p.joined*1000).toLocaleDateString():""}</div></div></div>`}
-async function settingsPage(){if(!me)return go("login");const p=await api("/api/profile/"+encodeURIComponent(me.name)),raw={online:"Online",away:"Away",busy:"Busy",invisible:"Invisible"},IMG='accept="image/png,image/jpeg,image/webp"';
- $("#app").innerHTML=`<h1>Edit profile</h1><div class="box"><label>Avatar (PNG, JPG or WebP, up to 2 MB)</label><input type="file" id="av" ${IMG}><label style="display:flex;gap:8px"><input type="checkbox" id="rav" style="width:auto"> Remove my avatar</label>
- <label>Banner (up to 5 MB)</label><input type="file" id="bn" ${IMG}><label style="display:flex;gap:8px"><input type="checkbox" id="rbn" style="width:auto"> Remove my banner</label>
- <label>Status</label><select id="pr">${Object.entries(raw).map(([k,v])=>`<option value="${k}" ${k===(p.presenceRaw||p.presence)?"selected":""}>${v}</option>`).join("")}</select>
- <label>Status message</label><input id="st" maxlength="80" value="${esc(p.statusText)}" placeholder="What are you up to?"><label>Bio (up to 500 characters)</label><textarea id="bio" rows="5" maxlength="500">${esc(p.bio)}</textarea>
- <label>Badges to show (up to 3)</label>${p.earned.length?p.earned.map(b=>`<label style="display:inline-flex;gap:6px;margin-right:16px"><input type="checkbox" class="bd" value="${esc(b)}" style="width:auto" ${p.shown.includes(b)?"checked":""}> ${esc(b)}</label>`).join(""):'<div style="color:#8f98a0">You haven\'t earned any badges yet. Publish an approved game or collect 10 games.</div>'}
- <p><button class="buy" id="sv">Save profile</button></p><div id="msg" style="color:#ff8a8a"></div></div>`;
- $("#sv").onclick=async()=>{const fd=new FormData(),sh=[...document.querySelectorAll(".bd:checked")].map(x=>x.value);if(sh.length>3)return $("#msg").textContent="Choose at most 3 badges.";
-  fd.append("presence",$("#pr").value);fd.append("statusText",$("#st").value);fd.append("bio",$("#bio").value);fd.append("shown",sh.join("|"));fd.append("removeAvatar",$("#rav").checked?"1":"0");fd.append("removeBanner",$("#rbn").checked?"1":"0");
-  if($("#av").files[0])fd.append("avatar",$("#av").files[0]);if($("#bn").files[0])fd.append("banner",$("#bn").files[0]);
-  try{await api("/api/profile",{method:"POST",body:fd});toast("Profile saved");go("profile/"+me.name)}catch(e){$("#msg").textContent=e.message}}}
+async function settingsPage(){if(!me)return go("login");const p=await api("/api/profile/"+encodeURIComponent(me.name)),t=Date.now(),IMG="image/png,image/jpeg,image/webp",raw={online:"Online",away:"Away",busy:"Busy",invisible:"Invisible"},
+ S={av:null,bn:null,rav:false,rbn:false,avUrl:p.hasAvatar?`/avatar/${p.key}?t=${t}`:"",bnUrl:p.hasBanner?`/banner/${p.key}?t=${t}`:""};
+ $("#app").innerHTML=`<h1>My profile</h1><div class="pe"><div>
+ <h2 style="margin-top:0">Avatar</h2><button class="buy" id="avb">Change avatar</button> <button id="avr">Remove avatar</button>
+ <h2>Banner</h2><button class="buy" id="bnb">Change banner</button> <button id="bnr">Remove banner</button>
+ <h2>Status</h2><select id="pr">${Object.entries(raw).map(([k,v])=>`<option value="${k}" ${k===p.presence?"selected":""}>${v}</option>`).join("")}</select>
+ <input id="st" maxlength="80" value="${esc(p.statusText)}" placeholder="What are you up to?" style="margin-top:8px">
+ <h2>About me</h2><textarea id="bio" rows="5" maxlength="500" placeholder="Tell people about yourself">${esc(p.bio)}</textarea><div id="cnt" style="color:#8f98a0;font-size:12px;text-align:right"></div>
+ <h2>Badges (show up to 3)</h2>${p.earned.length?p.earned.map(b=>`<label style="display:inline-flex;gap:6px;margin-right:16px"><input type="checkbox" class="bd" value="${esc(b)}" style="width:auto" ${p.shown.includes(b)?"checked":""}> ${esc(b)}</label>`).join(""):'<div style="color:#8f98a0">No badges yet. Publish an approved game or own 10 games.</div>'}
+ <input type="file" id="avin" accept="${IMG}" hidden><input type="file" id="bnin" accept="${IMG}" hidden></div>
+ <div><div class="pcard"><div id="pbn" class="pbn" title="Change banner"></div><div class="pbody"><div id="pav" class="pav" title="Change avatar"><span id="pin"></span><i id="pdot"></i></div>
+ <div class="pname">${esc(p.name)}</div><div id="pst" class="pstat"></div><div id="pbd" class="chips" style="margin:10px 0 0"></div><hr><b style="font-size:13px;color:#fff">About me</b><div id="pbio" class="pbio"></div></div></div></div></div>
+ <div id="savebar" hidden><span>You have unsaved changes.</span><button id="rs">Reset</button><button class="buy" id="sv">Save changes</button><span id="msg" style="color:#ff8a8a"></span></div>`;
+ const bar=$("#savebar"),msg=m=>{$("#msg").textContent=m;bar.hidden=false};
+ const pv=()=>{$("#pbn").style.background=S.bnUrl?`url(${S.bnUrl}) center/cover`:"linear-gradient(135deg,#2b5876,#4e4376)";$("#pav").style.backgroundImage=S.avUrl?`url(${S.avUrl})`:"none";$("#pin").textContent=S.avUrl?"":p.name[0].toUpperCase();
+  $("#pdot").style.background=(PRES[$("#pr").value]||PRES.online)[1];$("#pst").textContent=$("#st").value;$("#pbio").textContent=$("#bio").value||"Nothing here yet.";$("#cnt").textContent=$("#bio").value.length+"/500";
+  $("#pbd").innerHTML=[...document.querySelectorAll(".bd:checked")].map(x=>badgeHtml(x.value)).join("")};
+ const dirty=()=>{bar.hidden=false;$("#msg").textContent="";pv()};
+ const pick=(inp,key,rk,uk,lim,name)=>{$(inp).onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>lim*1048576)return msg(name+" must be under "+lim+" MB");S[key]=f;S[rk]=false;S[uk]=URL.createObjectURL(f);dirty()}};
+ pick("#avin","av","rav","avUrl",2,"Avatar");pick("#bnin","bn","rbn","bnUrl",5,"Banner");
+ $("#avb").onclick=$("#pav").onclick=()=>$("#avin").click();$("#bnb").onclick=$("#pbn").onclick=()=>$("#bnin").click();
+ $("#avr").onclick=()=>{S.av=null;S.rav=true;S.avUrl="";dirty()};$("#bnr").onclick=()=>{S.bn=null;S.rbn=true;S.bnUrl="";dirty()};
+ ["#pr","#st","#bio"].forEach(s=>$(s).oninput=dirty);document.querySelectorAll(".bd").forEach(c=>c.onchange=()=>{if(document.querySelectorAll(".bd:checked").length>3){c.checked=false;msg("Choose at most 3 badges.")}else dirty()});
+ $("#rs").onclick=()=>settingsPage();pv();
+ $("#sv").onclick=async()=>{const fd=new FormData();fd.append("presence",$("#pr").value);fd.append("statusText",$("#st").value);fd.append("bio",$("#bio").value);fd.append("shown",[...document.querySelectorAll(".bd:checked")].map(x=>x.value).join("|"));
+  fd.append("removeAvatar",S.rav?"1":"0");fd.append("removeBanner",S.rbn?"1":"0");if(S.av)fd.append("avatar",S.av);if(S.bn)fd.append("banner",S.bn);
+  $("#sv").disabled=true;try{await api("/api/profile",{method:"POST",body:fd});toast("Profile saved");go("profile/"+me.name)}catch(e){msg(e.message)}$("#sv").disabled=false}}
 async function setRole(n,r){try{await post("/api/admin/role",{username:n,role:r});route()}catch(e){toast(e.message)}}
 addEventListener("hashchange",route);route();
 </script></body></html>
