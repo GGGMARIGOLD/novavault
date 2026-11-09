@@ -46,12 +46,33 @@ static long eff(const json& g) { long p = g.value("price", 0L), s = g.value("sal
 static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o.erase("revenue"); o.erase("update"); o["status"] = g.value("status", "approved"); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
 
 // Returns the logged-in username or "" (caller holds mu).
-static std::string whoami(const httplib::Request& q) {
+static void logAct(const std::string& who, const std::string& what, const std::string& detail);
+static void save();
+static std::string displayOf(const json& u);
+// Ends a timed ban once its time is up and puts back the games the ban hid. Returns true if still banned.
+static bool stillBanned(const std::string& k) {
+  auto& u = db["users"][k]; if (!u.value("banned", false)) return false;
+  long until = u.value("banUntil", 0L); if (until == 0 || time(nullptr) < until) return true;
+  u["banned"] = false; u["banReason"] = ""; u.erase("banUntil");
+  for (auto& [gk, g] : db["games"].items()) if (g.value("owner", "") == k && g.value("banHidden", false)) { g["status"] = "approved"; g.erase("banHidden"); }
+  logAct(k, "unban", u["name"].get<std::string>() + " (ban ended)"); save(); return false;
+}
+static json banInfo(const std::string& k) {
+  auto& u = db["users"][k]; long at = u.value("bannedAt", 0L);
+  unsigned h = 2166136261u; for (char c : k + std::to_string(at)) h = (h ^ (unsigned char)c) * 16777619u;
+  char cid[16]; snprintf(cid, sizeof cid, "VSP-%08X", h);
+  return {{"username", u["name"]}, {"display", displayOf(u)}, {"reason", u.value("banReason", "")}, {"note", u.value("banNote", "")},
+    {"at", at}, {"until", u.value("banUntil", 0L)}, {"now", (long)time(nullptr)}, {"caseId", cid}};
+}
+// The logged-in account for this request, even if it is banned.
+static std::string sessionUser(const httplib::Request& q) {
   std::string c = q.get_header_value("Cookie"); auto p = c.find("sid=");
   if (p == std::string::npos) return "";
   auto e = c.find(';', p); auto t = c.substr(p + 4, e == std::string::npos ? e : e - p - 4);
-  auto it = sessions.find(t); if (it == sessions.end()) return ""; if (db["users"][it->second].value("banned", false)) return ""; return it->second;
+  auto it = sessions.find(t); if (it == sessions.end() || !db["users"].contains(it->second)) return ""; return it->second;
 }
+// The logged-in account allowed to act (banned accounts can't).
+static std::string whoami(const httplib::Request& q) { auto k = sessionUser(q); if (k.empty() || stillBanned(k)) return ""; return k; }
 static std::string roleOf(const std::string& n) { return n.empty() ? "" : db["users"][n].value("role", "user"); }
 static bool isMod(const std::string& n) { auto r = roleOf(n); return r == "admin" || r == "mod"; }
 static bool isAdmin(const std::string& n) { return roleOf(n) == "admin"; }
@@ -179,7 +200,7 @@ int main() {
     if (!db["users"].contains(n)) return reply(r, 401, err("Wrong username or password"));
     auto& u = db["users"][n];
     if (hashPw(b.value("password", ""), u["salt"]) != u["hash"]) return reply(r, 401, err("Wrong username or password"));
-    if (u.value("banned", false)) { std::string why = u.value("banReason", ""); return reply(r, 403, err("This account is banned" + (why.empty() ? std::string(".") : ": " + why))); }
+    stillBanned(n);
     std::string t = randHex(24); sessions[t] = n;
     r.set_header("Set-Cookie", "sid=" + t + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000");
     reply(r, 200, {{"ok", true}});
@@ -191,7 +212,8 @@ int main() {
   });
   svr.Get("/api/me", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
-    if (n.empty()) return reply(r, 200, {{"user", nullptr}, {"announcement", settings().value("announcement", "")}});
+    if (n.empty()) { auto s = sessionUser(q); if (!s.empty() && stillBanned(s)) return reply(r, 200, {{"user", nullptr}, {"ban", banInfo(s)}});
+      return reply(r, 200, {{"user", nullptr}, {"announcement", settings().value("announcement", "")}}); }
     auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"display", displayOf(u)}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}, {"equipped", u.value("equipped", json::object())}, {"friendRequests", u.value("friendReq", json::array()).size()}}}, {"announcement", settings().value("announcement", "")}});
   });
   svr.Get(R"(/api/profile/(\w+))", [&](const httplib::Request& q, httplib::Response& r) {
@@ -427,9 +449,10 @@ int main() {
   svr.Post(R"(/api/mod/games/(\d+)/reject)", [&](const httplib::Request& q, httplib::Response& r) { setStatus(q, r, "rejected"); });
   svr.Get("/api/admin/users", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
-    json a = json::array(); for (auto& [k, u] : db["users"].items()) { int made = 0; for (auto& [gk, g] : db["games"].items()) if (g.value("owner", "") == k) made++;
+    json a = json::array(); for (auto& [k, u] : db["users"].items()) stillBanned(k);
+    for (auto& [k, u] : db["users"].items()) { int made = 0; for (auto& [gk, g] : db["games"].items()) if (g.value("owner", "") == k) made++;
       a.push_back({{"name", u["name"]}, {"display", displayOf(u)}, {"key", k}, {"role", u.value("role", "user")}, {"balance", u["balance"]}, {"joined", u.value("joined", 0L)}, {"owned", u["library"].size()},
-        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"friendsLocked", u.value("friendsLocked", false)}, {"hasAvatar", u.value("avatar", "") != ""}, {"granted", u.value("granted", json::array())}}); }
+        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"banUntil", u.value("banUntil", 0L)}, {"bannedAt", u.value("bannedAt", 0L)}, {"friendsLocked", u.value("friendsLocked", false)}, {"hasAvatar", u.value("avatar", "") != ""}, {"granted", u.value("granted", json::array())}}); }
     reply(r, 200, a);
   });
   svr.Post("/api/admin/credits", [&](const httplib::Request& q, httplib::Response& r) {
@@ -509,10 +532,20 @@ int main() {
     std::string t = lower(b.value("username", "")); bool ban = b.value("ban", true);
     if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
     if (isAdmin(t)) return reply(r, 400, err("Admins can't be banned"));
-    auto& u = db["users"][t]; u["banned"] = ban; u["banReason"] = ban ? b.value("reason", "") : "";
-    if (ban) { for (auto it = sessions.begin(); it != sessions.end();) it = it->second == t ? sessions.erase(it) : std::next(it);
-      for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == t && g.value("status", "") == "approved") { g["status"] = "hidden"; g["featured"] = false; } }
-    logAct(n, ban ? "ban" : "unban", u["name"].get<std::string>() + (ban && u["banReason"] != "" ? " (" + u["banReason"].get<std::string>() + ")" : "")); save(); reply(r, 200, {{"ok", true}});
+    auto& u = db["users"][t]; long now = (long)time(nullptr);
+    if (ban) {
+      double hours = b.value("hours", 0.0); if (hours < 0 || hours > 24 * 3650) return reply(r, 400, err("Pick a valid ban length"));
+      std::string why = b.value("reason", ""), note = b.value("note", ""); if (why.size() > 120) why.resize(120); if (note.size() > 500) note.resize(500);
+      if (why.empty()) return reply(r, 400, err("Pick a reason"));
+      u["banned"] = true; u["banReason"] = why; u["banNote"] = note; u["bannedAt"] = now; u["banUntil"] = hours > 0 ? now + std::lround(hours * 3600) : 0;
+      for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == t && g.value("status", "") == "approved") { g["status"] = "hidden"; g["featured"] = false; g["banHidden"] = true; }
+      logAct(n, "ban", u["name"].get<std::string>() + " (" + why + (hours > 0 ? ", " + std::to_string(std::lround(hours)) + " h" : ", permanent") + ")");
+    } else {
+      u["banned"] = false; u["banReason"] = ""; u["banNote"] = ""; u.erase("banUntil");
+      for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == t && g.value("banHidden", false)) { g["status"] = "approved"; g.erase("banHidden"); }
+      logAct(n, "unban", u["name"].get<std::string>());
+    }
+    save(); reply(r, 200, {{"ok", true}});
   });
   svr.Post("/api/admin/settings", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (!isAdmin(n)) return reply(r, 403, err("Admins only"));
