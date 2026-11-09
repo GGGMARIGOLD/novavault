@@ -1,0 +1,7 @@
+Vespera
+
+The playful button interactions in index.html (hold to confirm, slide to confirm,
+confetti and ash bursts, cooldown, shine, glitch, the evil eyes and the troll button)
+were inspired by Evil Buttons by radiumcoders (https://github.com/radiumcoders/evil-buttons),
+licensed under the Apache License 2.0. Vespera's versions are written from scratch in plain
+JavaScript and CSS; no code from that project is included.

@@ -27,7 +27,13 @@ Display name, @username, avatar, banner, status, status message, bio and badge i
 Developers click **Update game** on their game page. Before a game is accepted, edits apply straight away and it goes back to review. After it's accepted, changes (new file, details, cover) become an update that an admin reviews; the current version stays live until the update is accepted. The price of an accepted game is locked: only admins can change it (Admin → Games → Price).
 
 ## Credits and the Profile Shop
-Games and Profile Shop items are bought with credits. Only admins give out credits (Admin → Users). The Profile Shop sells avatar frames, profile themes, name styles and banner effects; you can try items on before buying.
+Games and Profile Shop items are bought with credits. Only admins give out credits (Admin → Users). The Profile Shop sells 42 items: avatar frames, profile themes, name styles and banner effects. You can try items on before buying.
+
+## Owner Vault
+Admin → 👑 Owner Vault holds 12 exclusive animated cosmetics (Sovereign Halo, Event Horizon, Hellfire, Throne Room, Galaxy Core, The Abyss, Liquid Gold, Overlord, Starlight, Meteor Storm, Gold Rain, Warp Speed). Only admins can wear them; they can't be bought. There is also an Owner badge admins can give out.
+
+## Playful buttons
+Dangerous actions use hold-to-confirm (delete, ban, decline) or slide-to-confirm (deleting from a game page). Purchases and approvals throw confetti. Inspired by [Evil Buttons](https://github.com/radiumcoders/evil-buttons) (Apache-2.0); see NOTICE.
 
 ## Notes
 - Credits aren't connected to real money. Wire a payment provider in before selling credits.

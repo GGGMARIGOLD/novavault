@@ -101,7 +101,42 @@ static const json CATALOG = json::parse(R"([
   {"id":"name_prism","slot":"name","name":"Prism Shift","price":1200},
   {"id":"effect_stars","slot":"effect","name":"Starfall","price":900},
   {"id":"effect_snow","slot":"effect","name":"Snowdrift","price":900},
-  {"id":"effect_embers","slot":"effect","name":"Rising Embers","price":1100}
+  {"id":"effect_embers","slot":"effect","name":"Rising Embers","price":1100},
+  {"id":"frame_pixel","slot":"frame","name":"Pixel Border","price":700},
+  {"id":"frame_radar","slot":"frame","name":"Radar Pulse","price":900},
+  {"id":"frame_chrome","slot":"frame","name":"Liquid Chrome","price":1000},
+  {"id":"frame_glitch","slot":"frame","name":"Glitch Ring","price":1200},
+  {"id":"frame_thorns","slot":"frame","name":"Thorn Crown","price":1300},
+  {"id":"frame_holo","slot":"frame","name":"Hologram","price":1400},
+  {"id":"theme_ink","slot":"theme","name":"Ink Smoke","price":900},
+  {"id":"theme_gold","slot":"theme","name":"Midnight Gold","price":1000},
+  {"id":"theme_aurora","slot":"theme","name":"Aurora Sky","price":1200},
+  {"id":"theme_lava","slot":"theme","name":"Lava Flow","price":1400},
+  {"id":"theme_rain","slot":"theme","name":"Data Rain","price":1500},
+  {"id":"theme_synth","slot":"theme","name":"Synthwave Grid","price":1600},
+  {"id":"name_retro","slot":"name","name":"Retro 3D","price":700},
+  {"id":"name_chrome","slot":"name","name":"Chrome","price":800},
+  {"id":"name_neon","slot":"name","name":"Neon Sign","price":900},
+  {"id":"name_glitch","slot":"name","name":"Glitch","price":1000},
+  {"id":"name_holo","slot":"name","name":"Holographic","price":1100},
+  {"id":"effect_crt","slot":"effect","name":"CRT Scanlines","price":700},
+  {"id":"effect_rain","slot":"effect","name":"Night Rain","price":800},
+  {"id":"effect_bubbles","slot":"effect","name":"Bubbles","price":800},
+  {"id":"effect_fireflies","slot":"effect","name":"Fireflies","price":1000},
+  {"id":"effect_shooting","slot":"effect","name":"Shooting Stars","price":1200},
+  {"id":"effect_lightning","slot":"effect","name":"Thunderstrike","price":1300},
+  {"id":"frame_sovereign","slot":"frame","name":"Sovereign Halo","price":0,"owner":true},
+  {"id":"frame_horizon","slot":"frame","name":"Event Horizon","price":0,"owner":true},
+  {"id":"frame_hellfire","slot":"frame","name":"Hellfire","price":0,"owner":true},
+  {"id":"theme_throne","slot":"theme","name":"Throne Room","price":0,"owner":true},
+  {"id":"theme_galaxy","slot":"theme","name":"Galaxy Core","price":0,"owner":true},
+  {"id":"theme_abyss","slot":"theme","name":"The Abyss","price":0,"owner":true},
+  {"id":"name_liquidgold","slot":"name","name":"Liquid Gold","price":0,"owner":true},
+  {"id":"name_overlord","slot":"name","name":"Overlord","price":0,"owner":true},
+  {"id":"name_starlight","slot":"name","name":"Starlight","price":0,"owner":true},
+  {"id":"effect_meteor","slot":"effect","name":"Meteor Storm","price":0,"owner":true},
+  {"id":"effect_goldrain","slot":"effect","name":"Gold Rain","price":0,"owner":true},
+  {"id":"effect_warp","slot":"effect","name":"Warp Speed","price":0,"owner":true}
 ])");
 static const json* item(const std::string& id) { for (auto& i : CATALOG) if (i["id"] == id) return &i; return nullptr; }
 
@@ -192,7 +227,7 @@ int main() {
     auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
     std::string t = lower(b.value("username", "")), bd = b.value("badge", ""); bool give = b.value("grant", true);
     if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
-    if (bd != "Founder" && bd != "Beta Tester" && bd != "Verified Dev" && bd != "Supporter") return reply(r, 400, err("Unknown badge"));
+    if (bd != "Owner" && bd != "Founder" && bd != "Beta Tester" && bd != "Verified Dev" && bd != "Supporter") return reply(r, 400, err("Unknown badge"));
     json out = json::array(); json cur = db["users"][t].value("granted", json::array()); for (auto& x : cur) if (x != bd) out.push_back(x);
     if (give) out.push_back(bd); db["users"][t]["granted"] = out; logAct(whoami(q), give ? "badge+" : "badge-", db["users"][t]["name"].get<std::string>() + ": " + bd); save(); reply(r, 200, {{"ok", true}});
   });
@@ -466,12 +501,14 @@ int main() {
   svr.Get("/api/shop", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); json owned = json::array(), eq = json::object(); long bal = 0;
     if (!n.empty()) { auto& u = db["users"][n]; owned = u.value("items", json::array()); eq = u.value("equipped", json::object()); bal = u["balance"]; }
-    reply(r, 200, {{"items", CATALOG}, {"owned", owned}, {"equipped", eq}, {"balance", bal}});
+    json items = json::array(); bool adm = isAdmin(n); for (auto& i : CATALOG) if (!i.value("owner", false) || adm) items.push_back(i);
+    reply(r, 200, {{"items", items}, {"owned", owned}, {"equipped", eq}, {"balance", bal}});
   });
   svr.Post("/api/shop/buy", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (n.empty()) return reply(r, 401, err("Log in to shop"));
     auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
     auto it = item(b.value("item", "")); if (!it) return reply(r, 404, err("No such item"));
+    if ((*it).value("owner", false)) return reply(r, 403, err("Owner items can't be bought"));
     auto& u = db["users"][n]; if (!u.contains("items")) u["items"] = json::array();
     for (auto& x : u["items"]) if (x == (*it)["id"]) return reply(r, 400, err("You already own this"));
     long p = (*it)["price"]; if (u["balance"].get<long>() < p) return reply(r, 402, err("Not enough credits. You need " + std::to_string(p) + " and have " + std::to_string(u["balance"].get<long>()) + "."));
@@ -489,7 +526,8 @@ int main() {
     if (id.empty()) { u["equipped"].erase(slot); save(); return reply(r, 200, {{"ok", true}}); }
     auto it = item(id); if (!it || (*it)["slot"] != slot) return reply(r, 400, err("That item doesn't go there"));
     bool own = false; for (auto& x : u.value("items", json::array())) if (x == id) own = true;
-    if (!own) return reply(r, 403, err("Buy this item first"));
+    if ((*it).value("owner", false)) { if (!isAdmin(n)) return reply(r, 403, err("Only the owner can wear this")); }
+    else if (!own) return reply(r, 403, err("Buy this item first"));
     u["equipped"][slot] = id; save(); reply(r, 200, {{"ok", true}});
   });
   // Serve ./index.html if present (GitHub layout), otherwise the ./web folder.
