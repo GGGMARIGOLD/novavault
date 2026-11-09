@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vespera — download</title>
+<meta name="description" content="Vespera is a game store you run on your own computer: accounts, credits, a store, a library, game uploads, reviews and profiles. Download it for Windows.">
+<meta property="og:title" content="Vespera">
+<meta property="og:description" content="A game store you run on your own computer. Download for Windows.">
+<meta property="og:type" content="website">
+<style>
+:root{
+  --top:#171a21; --bg:#1b2838; --panel:#16202d; --line:#2a475e;
+  --text:#c7d5e0; --bright:#fff; --blue:#66c0f4; --dim:#8da3b8;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; min-height:100vh;
+  font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color:var(--text);
+  background:var(--bg);
+  background-image:radial-gradient(1100px 620px at 50% -10%,#24364d 0%,rgba(36,54,77,0) 70%);
+  display:flex; flex-direction:column; align-items:center;
+  padding:0 20px 64px;
+}
+header{width:100%; background:var(--top); margin:0 -20px 0; padding:14px 24px; display:flex; justify-content:center}
+.bar{width:100%; max-width:960px; display:flex; align-items:center; gap:18px}
+.logo{
+  font:800 23px Georgia,serif; letter-spacing:4px; white-space:nowrap;
+  background:linear-gradient(90deg,#ffd27d,#ff8fb1 45%,#a98bff);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.logo .star{margin-right:6px; -webkit-text-fill-color:#ffd27d; color:#ffd27d}
+.bar a{margin-left:auto; color:var(--dim); text-decoration:none; font-size:14px}
+.bar a:hover{color:var(--bright)}
+
+main{width:100%; max-width:760px}
+.hero{text-align:center; padding:62px 0 10px}
+.wordmark{
+  font:800 54px/1.1 Georgia,serif; letter-spacing:9px; margin:0 0 18px;
+  background:linear-gradient(90deg,#ffd27d,#ff8fb1 45%,#a98bff);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.wordmark .star{-webkit-text-fill-color:#ffd27d; color:#ffd27d; letter-spacing:0; margin-right:10px}
+.tag{font-size:19px; color:var(--text); margin:0 auto; max-width:30em}
+
+.cta{display:flex; flex-wrap:wrap; gap:14px; justify-content:center; margin:36px 0 10px}
+.btn{
+  display:inline-flex; align-items:center; gap:10px;
+  padding:15px 30px; border-radius:4px; text-decoration:none;
+  font-size:16px; font-weight:600; border:1px solid transparent; transition:filter .15s,border-color .15s;
+}
+.btn:focus-visible{outline:2px solid var(--blue); outline-offset:3px}
+.btn-main{background:linear-gradient(90deg,#ffd27d,#ff8fb1 55%,#a98bff); color:#1b1020}
+.btn-main:hover{filter:brightness(1.1)}
+.btn-alt{background:var(--panel); color:var(--text); border-color:var(--line)}
+.btn-alt:hover{border-color:var(--blue); color:var(--bright)}
+.sub{font-size:13px; color:var(--dim); text-align:center; margin:4px 0 0}
+
+.steps{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:52px 0 0;
+}
+.step{background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:20px}
+.step .n{
+  display:grid; place-items:center; width:26px; height:26px; border-radius:50%;
+  background:var(--line); color:var(--bright); font-size:13px; font-weight:700; margin-bottom:12px;
+}
+.step h3{margin:0 0 6px; font-size:15px; color:var(--bright); font-weight:600}
+.step p{margin:0; font-size:14px; color:var(--dim)}
+
+.note{
+  margin:40px 0 0; padding:18px 22px; background:var(--panel);
+  border:1px solid var(--line); border-left:3px solid var(--blue); border-radius:4px;
+  font-size:14.5px;
+}
+.note h2{margin:0 0 8px; font-size:15px; color:var(--bright); font-weight:600}
+.note p{margin:0 0 10px}
+.note p:last-child{margin-bottom:0}
+.note code{
+  background:#0e1620; border:1px solid var(--line); border-radius:3px;
+  padding:1px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--blue);
+}
+a{color:var(--blue)}
+footer{margin:46px 0 0; text-align:center; font-size:13px; color:var(--dim)}
+footer .star{color:#ffd27d}
+
+@media (max-width:620px){
+  .wordmark{font-size:36px; letter-spacing:5px}
+  .tag{font-size:17px}
+  .steps{grid-template-columns:1fr}
+  .btn{width:100%; justify-content:center}
+  .hero{padding-top:40px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <span class="logo"><span class="star">✦</span>VESPERA</span>
+    <a href="https://github.com/GGGMARIGOLD/vespera">View on GitHub</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1 class="wordmark"><span class="star">✦</span>VESPERA</h1>
+    <p class="tag">A game store you run yourself — accounts, credits, a store and library, game uploads, reviews, an admin panel and Discord-style profiles.</p>
+
+    <div class="cta">
+      <a class="btn btn-main" href="https://github.com/GGGMARIGOLD/vespera/releases/latest/download/Vespera-Windows.zip">
+        <span aria-hidden="true">⬇</span> Download for Windows
+      </a>
+      <a class="btn btn-alt" href="https://github.com/GGGMARIGOLD/vespera/archive/refs/heads/main.zip">
+        <span aria-hidden="true">❖</span> Download the source
+      </a>
+    </div>
+    <p class="sub">Vespera-Windows.zip · about 1.8&nbsp;MB · rebuilt automatically from the latest code</p>
+  </section>
+
+  <section class="steps">
+    <div class="step">
+      <div class="n">1</div>
+      <h3>Unzip it</h3>
+      <p>Right-click the downloaded zip and choose Extract All.</p>
+    </div>
+    <div class="step">
+      <div class="n">2</div>
+      <h3>Run Vespera.exe</h3>
+      <p>Double-click it. Windows may warn about an unknown publisher — choose More info, then Run anyway.</p>
+    </div>
+    <div class="step">
+      <div class="n">3</div>
+      <h3>It opens in your browser</h3>
+      <p>Vespera runs at localhost:8080. The first account you create becomes the admin.</p>
+    </div>
+  </section>
+
+  <section class="note">
+    <h2>Good to know</h2>
+    <p>Vespera is a desktop app, not a website. It starts a small server on your own machine, so this page can only hand you the download — keep the Vespera window open while you use it, and everything you create is saved in the <code>data</code> folder next to the .exe.</p>
+    <p>On macOS or Linux, grab the source above and run <code>make run</code> (needs <code>g++</code>, <code>make</code> and <code>zlib1g-dev</code>). To put Vespera online for other people on your own server with HTTPS, see <a href="https://github.com/GGGMARIGOLD/vespera#readme">the README</a>.</p>
+  </section>
+
+  <footer>
+    <p><span class="star">✦</span> Vespera · <a href="https://github.com/GGGMARIGOLD/vespera">source on GitHub</a></p>
+  </footer>
+</main>
+
+</body>
+</html>
