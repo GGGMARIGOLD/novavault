@@ -11,15 +11,19 @@ Click **Code → Codespaces → Create codespace**. It installs everything, buil
 
 Data lives in `data/` (db.json + uploaded files). Back it up.
 
-## Roles and moderation
+## Publishing
+Upload .exe, .msi, .apk, .zip and other game files up to 4 GB. Files are sent in 8 MB pieces, so large games upload reliably and a dropped connection resumes instead of starting over.
+
+## Review and the admin panel
 - The first account on a fresh server is the admin. To make an existing account the admin: `ADMIN_USER=name ./novavault` (the Codespace does this for MARIGOLD).
-- **Admin** page: approve or reject submitted games, add credits, make moderators, give badges.
-- Games from regular users stay pending until a moderator or admin approves them.
+- Every game from a non-admin goes to the **review queue** first. Admins and moderators accept it or decline it with a reason; the developer sees the result under Library → My submissions and can resubmit a declined game.
+- Admin panel tabs: **Overview** (stats, top games, recent activity), **Review queue**, **Games** (feature, unpublish, change price, delete), **Users** (add or remove credits, badges, moderators, ban and unban), **Activity** (log of every action) and **Settings** (store announcement banner, test funds on or off).
+- Moderators see only the review queue.
 
 ## Profiles
 Avatar, banner, status, status message, bio and up to 3 badges. Your profile card sits in the bottom-left corner.
 
 ## Notes
-- Wallet funds are test money. Run with `NO_DEMO_FUNDS=1` to turn off "Add test funds". Wire a real payment provider into `/api/games/:id/buy` before charging anyone.
-- Uploads are held in memory while uploading (2 GB limit). Put it behind HTTPS before going public.
+- Wallet funds are test money. Turn off "Add test funds" in Admin → Settings (or run with `NO_DEMO_FUNDS=1`). Wire a real payment provider into `/api/games/:id/buy` before charging anyone.
+- Put it behind HTTPS before going public.
 - Sessions are in memory, so everyone logs in again after a restart.
