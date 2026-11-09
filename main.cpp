@@ -84,7 +84,7 @@ static json shownBadges(const std::string& n);
 static json summary(const std::string& k) {
   auto& u = db["users"][k]; std::string pr = u.value("presence", "online"); json eq = u.value("equipped", json::object());
   return {{"key", k}, {"name", u["name"]}, {"display", displayOf(u)}, {"hasAvatar", u.value("avatar", "") != ""}, {"presence", pr == "invisible" ? "offline" : pr},
-    {"statusText", u.value("statusText", "")}, {"frame", eq.value("frame", "")}, {"nameStyle", eq.value("name", "")}, {"badges", shownBadges(k)}, {"banned", u.value("banned", false)}};
+    {"statusText", u.value("statusText", "")}, {"frame", eq.value("frame", "")}, {"nameStyle", eq.value("name", "")}, {"badges", shownBadges(k)}, {"banned", u.value("banned", false)}, {"friendsLocked", u.value("friendsLocked", false)}};
 }
 static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
 static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
@@ -204,7 +204,7 @@ int main() {
       {"joined", u.value("joined", 0L)}, {"games", games}, {"owned", u["library"].size()}, {"equipped", u.value("equipped", json::object())}};
     if (me == n) { p["earned"] = earned(n); p["shown"] = shownBadges(n); }
     long followers = 0; for (auto& [k, x] : db["users"].items()) if (inList(x, "following", n)) followers++;
-    p["followers"] = followers; p["followingCount"] = u.value("following", json::array()).size(); p["friendsCount"] = u.value("friends", json::array()).size();
+    p["followers"] = followers; p["friendsLocked"] = u.value("friendsLocked", false); p["followingCount"] = u.value("following", json::array()).size(); p["friendsCount"] = u.value("friends", json::array()).size();
     if (!me.empty() && me != n) { auto& v = db["users"][me]; p["isFollowing"] = inList(v, "following", n);
       p["friendState"] = inList(v, "friends", n) ? "friends" : inList(u, "friendReq", me) ? "sent" : inList(v, "friendReq", n) ? "received" : "none"; }
     reply(r, 200, p);
@@ -429,7 +429,7 @@ int main() {
     std::lock_guard<std::mutex> l(mu); if (!isAdmin(whoami(q))) return reply(r, 403, err("Admins only"));
     json a = json::array(); for (auto& [k, u] : db["users"].items()) { int made = 0; for (auto& [gk, g] : db["games"].items()) if (g.value("owner", "") == k) made++;
       a.push_back({{"name", u["name"]}, {"display", displayOf(u)}, {"key", k}, {"role", u.value("role", "user")}, {"balance", u["balance"]}, {"joined", u.value("joined", 0L)}, {"owned", u["library"].size()},
-        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"hasAvatar", u.value("avatar", "") != ""}, {"granted", u.value("granted", json::array())}}); }
+        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"friendsLocked", u.value("friendsLocked", false)}, {"hasAvatar", u.value("avatar", "") != ""}, {"granted", u.value("granted", json::array())}}); }
     reply(r, 200, a);
   });
   svr.Post("/api/admin/credits", [&](const httplib::Request& q, httplib::Response& r) {
@@ -494,6 +494,14 @@ int main() {
     for (auto& [k, x] : db["users"].items()) for (auto lst : {"following", "friends", "friendReq"}) if (inList(x, lst, ok)) { dropFrom(x, lst, ok); addTo(x, lst, nk); }
     if (db.contains("comments")) for (auto& [gid, list] : db["comments"].items()) for (auto& c : list) if (c.value("user", "") == ok) c["user"] = nk;
     logAct(n == ok ? nk : n, "rename", "@" + old + " is now @" + nn); save(); reply(r, 200, {{"ok", true}, {"key", nk}});
+  });
+  svr.Post("/api/admin/friendlock", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (!isAdmin(n)) return reply(r, 403, err("Admins only"));
+    auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string t = lower(b.value("username", "")); bool lock = b.value("locked", true);
+    if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    db["users"][t]["friendsLocked"] = lock;
+    logAct(n, lock ? "lock friends" : "unlock friends", "@" + db["users"][t]["name"].get<std::string>()); save(); reply(r, 200, {{"ok", true}});
   });
   svr.Post("/api/admin/ban", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (!isAdmin(n)) return reply(r, 403, err("Admins only"));
@@ -581,6 +589,7 @@ int main() {
     if (act == "request") {
       if (inList(me, "friends", t)) return reply(r, 200, {{"state", "friends"}});
       if (inList(me, "friendReq", t)) act = "accept"; // they already asked you: accept
+      else if (them.value("friendsLocked", false)) return reply(r, 403, err(them["name"].get<std::string>() + " isn't accepting friend requests"));
       else { if (them.value("friendReq", json::array()).size() >= 200) return reply(r, 429, err("They have too many pending requests"));
         addTo(them, "friendReq", n); state = "sent"; }
     }
