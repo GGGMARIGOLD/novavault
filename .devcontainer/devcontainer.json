@@ -2,7 +2,7 @@
   "name": "Vespera",
   "image": "mcr.microsoft.com/devcontainers/universal:2",
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libssl-dev && make",
-  "postAttachCommand": "make run",
+  "postAttachCommand": "make restart",
   "containerEnv": { "ADMIN_USER": "MARIGOLD" },
   "forwardPorts": [8080],
   "portsAttributes": { "8080": { "label": "Vespera", "onAutoForward": "openBrowser" } }

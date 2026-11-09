@@ -1,5 +1,5 @@
 CXX ?= g++
-CXXFLAGS ?= -std=c++17 -O2 -Wall -pthread
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wno-misleading-indentation -pthread
 LDLIBS = -lssl -lcrypto
 
 vespera: main.cpp httplib.h json.hpp
@@ -10,4 +10,9 @@ deps:
 	curl -L -o json.hpp https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp
 
 run: vespera
+	./vespera
+
+# Stops any Vespera that's already running, then starts the new one.
+restart: vespera
+	-pkill -x vespera; sleep 1
 	./vespera

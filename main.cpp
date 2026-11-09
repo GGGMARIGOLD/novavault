@@ -156,6 +156,9 @@ int main() {
   if (const char* a = getenv("ADMIN_USER")) { auto k = lower(a); if (db["users"].contains(k)) { db["users"][k]["role"] = "admin"; save(); printf("%s is an admin\n", a); } }
   fs::remove_all("data/tmp"); fs::create_directories("data/tmp");
   httplib::Server svr;
+  // Only one Vespera may own the port. (The web library allows port sharing by default, which let two
+  // copies run at once with separate data and logins, overwriting each other's saves.)
+  svr.set_socket_options([](socket_t sock) { int yes = 1; setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)); });
   svr.set_payload_max_length(64ULL << 20); // single requests are small: big game files arrive in chunks
 
   svr.Post("/api/register", [&](const httplib::Request& q, httplib::Response& r) {
@@ -626,6 +629,10 @@ int main() {
   if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, "text/html"); });
   else svr.set_mount_point("/", "./web");
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
+  if (!svr.bind_to_port("0.0.0.0", port)) {
+    fprintf(stderr, "\nVespera couldn't start: port %d is already in use.\nAnother Vespera is probably still running. Run:  make restart\n\n", port);
+    return 1;
+  }
   printf("Vespera running on http://localhost:%d\n", port);
-  svr.listen("0.0.0.0", port);
+  svr.listen_after_bind();
 }

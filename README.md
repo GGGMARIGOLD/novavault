@@ -8,6 +8,7 @@ Click **Code → Codespaces → Create codespace**. It installs everything, buil
 ## Run it on Linux
     sudo apt install g++ make libssl-dev
     make run          # http://localhost:8080   (PORT=3000 ./vespera to change)
+    make restart      # stop a Vespera that's already running, rebuild and start again
 
 Data lives in `data/` (db.json + uploaded files). Back it up.
 
