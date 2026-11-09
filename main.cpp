@@ -76,7 +76,16 @@ static std::string cleanDisplay(std::string t) {
   if (o.size() > 32) { o.resize(32); while (!o.empty() && ((unsigned char)o.back() & 0xC0) == 0x80) o.pop_back(); if (!o.empty() && (unsigned char)o.back() >= 0xC0) o.pop_back(); }
   return o;
 }
+static bool inList(const json& u, const char* k, const std::string& v) { for (auto& x : u.value(k, json::array())) if (x == v) return true; return false; }
+static void addTo(json& u, const char* k, const std::string& v) { if (!u.contains(k)) u[k] = json::array(); if (!inList(u, k, v)) u[k].push_back(v); }
+static void dropFrom(json& u, const char* k, const std::string& v) { json o = json::array(); for (auto& x : u.value(k, json::array())) if (x != v) o.push_back(x); u[k] = o; }
 static std::string mimeOf(const std::string& p) { auto e = p.substr(p.find_last_of('.') + 1); return e == "png" ? "image/png" : e == "webp" ? "image/webp" : "image/jpeg"; }
+static json shownBadges(const std::string& n);
+static json summary(const std::string& k) {
+  auto& u = db["users"][k]; std::string pr = u.value("presence", "online"); json eq = u.value("equipped", json::object());
+  return {{"key", k}, {"name", u["name"]}, {"display", displayOf(u)}, {"hasAvatar", u.value("avatar", "") != ""}, {"presence", pr == "invisible" ? "offline" : pr},
+    {"statusText", u.value("statusText", "")}, {"frame", eq.value("frame", "")}, {"nameStyle", eq.value("name", "")}, {"badges", shownBadges(k)}, {"banned", u.value("banned", false)}};
+}
 static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
 static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
 static long credits(const std::string& s) { try { return std::clamp(std::lround(std::stod(s)), 0L, 1000000L); } catch (...) { return 0; } }
@@ -180,7 +189,7 @@ int main() {
   svr.Get("/api/me", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
     if (n.empty()) return reply(r, 200, {{"user", nullptr}, {"announcement", settings().value("announcement", "")}});
-    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"display", displayOf(u)}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}, {"equipped", u.value("equipped", json::object())}}}, {"announcement", settings().value("announcement", "")}});
+    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"display", displayOf(u)}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}, {"equipped", u.value("equipped", json::object())}, {"friendRequests", u.value("friendReq", json::array()).size()}}}, {"announcement", settings().value("announcement", "")}});
   });
   svr.Get(R"(/api/profile/(\w+))", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); std::string n = lower(q.matches[1]), me = whoami(q);
@@ -191,6 +200,10 @@ int main() {
       {"presence", (pr == "invisible" && me != n) ? "offline" : pr}, {"badges", shownBadges(n)}, {"hasAvatar", u.value("avatar", "") != ""}, {"hasBanner", u.value("banner", "") != ""},
       {"joined", u.value("joined", 0L)}, {"games", games}, {"owned", u["library"].size()}, {"equipped", u.value("equipped", json::object())}};
     if (me == n) { p["earned"] = earned(n); p["shown"] = shownBadges(n); }
+    long followers = 0; for (auto& [k, x] : db["users"].items()) if (inList(x, "following", n)) followers++;
+    p["followers"] = followers; p["followingCount"] = u.value("following", json::array()).size(); p["friendsCount"] = u.value("friends", json::array()).size();
+    if (!me.empty() && me != n) { auto& v = db["users"][me]; p["isFollowing"] = inList(v, "following", n);
+      p["friendState"] = inList(v, "friends", n) ? "friends" : inList(u, "friendReq", me) ? "sent" : inList(v, "friendReq", n) ? "received" : "none"; }
     reply(r, 200, p);
   });
   svr.Post("/api/profile", [&](const httplib::Request& q, httplib::Response& r) {
@@ -227,7 +240,7 @@ int main() {
     auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
     std::string t = lower(b.value("username", "")), bd = b.value("badge", ""); bool give = b.value("grant", true);
     if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
-    if (bd != "Owner" && bd != "Founder" && bd != "Beta Tester" && bd != "Verified Dev" && bd != "Supporter") return reply(r, 400, err("Unknown badge"));
+    if (bd != "Partner" && bd != "Owner" && bd != "Founder" && bd != "Beta Tester" && bd != "Verified Dev" && bd != "Supporter") return reply(r, 400, err("Unknown badge"));
     json out = json::array(); json cur = db["users"][t].value("granted", json::array()); for (auto& x : cur) if (x != bd) out.push_back(x);
     if (give) out.push_back(bd); db["users"][t]["granted"] = out; logAct(whoami(q), give ? "badge+" : "badge-", db["users"][t]["name"].get<std::string>() + ": " + bd); save(); reply(r, 200, {{"ok", true}});
   });
@@ -358,7 +371,7 @@ int main() {
     if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
     auto g = db["games"][id]; if (g["owner"] != n && !isAdmin(n)) return reply(r, 403, err("Only the developer or an admin can remove this game"));
     rmFile(g.value("file", "")); rmFile(g.value("cover", "")); if (g.contains("update")) { rmFile(g["update"].value("file", "")); rmFile(g["update"].value("cover", "")); }
-    logAct(n, "delete", g["title"].get<std::string>()); db["games"].erase(id); save(); reply(r, 200, {{"ok", true}});
+    if (db.contains("comments")) db["comments"].erase(id); logAct(n, "delete", g["title"].get<std::string>()); db["games"].erase(id); save(); reply(r, 200, {{"ok", true}});
   });
   svr.Post(R"(/api/games/(\d+)/buy)", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
@@ -475,6 +488,8 @@ int main() {
     for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == ok) { g["owner"] = nk; g["dev"] = nn; }
     for (auto& [t, who] : sessions) if (who == ok) who = nk;
     for (auto& [id, up] : uploads) if (up.owner == ok) up.owner = nk;
+    for (auto& [k, x] : db["users"].items()) for (auto lst : {"following", "friends", "friendReq"}) if (inList(x, lst, ok)) { dropFrom(x, lst, ok); addTo(x, lst, nk); }
+    if (db.contains("comments")) for (auto& [gid, list] : db["comments"].items()) for (auto& c : list) if (c.value("user", "") == ok) c["user"] = nk;
     logAct(n == ok ? nk : n, "rename", "@" + old + " is now @" + nn); save(); reply(r, 200, {{"ok", true}, {"key", nk}});
   });
   svr.Post("/api/admin/ban", [&](const httplib::Request& q, httplib::Response& r) {
@@ -529,6 +544,83 @@ int main() {
     if ((*it).value("owner", false)) { if (!isAdmin(n)) return reply(r, 403, err("Only the owner can wear this")); }
     else if (!own) return reply(r, 403, err("Buy this item first"));
     u["equipped"][slot] = id; save(); reply(r, 200, {{"ok", true}});
+  });
+  // ---- follow
+  svr.Post(R"(/api/users/(\w+)/(follow|unfollow))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string t = lower(q.matches[1]);
+    if (n.empty()) return reply(r, 401, err("Log in first")); if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    if (t == n) return reply(r, 400, err("You can't follow yourself"));
+    auto& u = db["users"][n]; if (q.matches[2] == "follow") addTo(u, "following", t); else dropFrom(u, "following", t);
+    save(); reply(r, 200, {{"ok", true}});
+  });
+  svr.Get(R"(/api/users/(\w+)/(followers|following|friends))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); std::string t = lower(q.matches[1]), kind = q.matches[2];
+    if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    json out = json::array();
+    if (kind == "followers") { for (auto& [k, x] : db["users"].items()) if (inList(x, "following", t)) out.push_back(summary(k)); }
+    else for (auto& k : db["users"][t].value(kind == "following" ? "following" : "friends", json::array())) if (db["users"].contains(k.get<std::string>())) out.push_back(summary(k));
+    reply(r, 200, out);
+  });
+  // ---- friends (requests must be accepted)
+  svr.Get("/api/friends", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (n.empty()) return reply(r, 401, err("Log in first"));
+    auto& u = db["users"][n]; json fr = json::array(), in = json::array(), outq = json::array();
+    for (auto& k : u.value("friends", json::array())) if (db["users"].contains(k.get<std::string>())) fr.push_back(summary(k));
+    for (auto& k : u.value("friendReq", json::array())) if (db["users"].contains(k.get<std::string>())) in.push_back(summary(k));
+    for (auto& [k, x] : db["users"].items()) if (inList(x, "friendReq", n)) outq.push_back(summary(k));
+    reply(r, 200, {{"friends", fr}, {"incoming", in}, {"outgoing", outq}});
+  });
+  svr.Post(R"(/api/friends/(\w+)/(request|accept|decline|remove))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string t = lower(q.matches[1]), act = q.matches[2];
+    if (n.empty()) return reply(r, 401, err("Log in first")); if (!db["users"].contains(t)) return reply(r, 404, err("No such user"));
+    if (t == n) return reply(r, 400, err("You can't friend yourself"));
+    auto& me = db["users"][n]; auto& them = db["users"][t]; std::string state;
+    if (act == "request") {
+      if (inList(me, "friends", t)) return reply(r, 200, {{"state", "friends"}});
+      if (inList(me, "friendReq", t)) act = "accept"; // they already asked you: accept
+      else { if (them.value("friendReq", json::array()).size() >= 200) return reply(r, 429, err("They have too many pending requests"));
+        addTo(them, "friendReq", n); state = "sent"; }
+    }
+    if (act == "accept") { if (!inList(me, "friendReq", t)) return reply(r, 400, err("No friend request from them"));
+      dropFrom(me, "friendReq", t); addTo(me, "friends", t); addTo(them, "friends", n); dropFrom(them, "friendReq", n); state = "friends"; }
+    if (act == "decline") { dropFrom(me, "friendReq", t); state = "none"; }
+    if (act == "remove") { dropFrom(me, "friends", t); dropFrom(them, "friends", n); dropFrom(them, "friendReq", n); state = "none"; }
+    save(); reply(r, 200, {{"state", state}});
+  });
+  // ---- comments on games
+  static std::map<std::string, long> lastComment;
+  svr.Get(R"(/api/games/(\d+)/comments)", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); std::string id = q.matches[1]; json out = json::array();
+    if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+    std::string owner = db["games"][id].value("owner", "");
+    for (auto& c : db.value("comments", json::object()).value(id, json::array())) { std::string k = c.value("user", "");
+      if (!db["users"].contains(k) || db["users"][k].value("banned", false)) continue;
+      json o = c; o["author"] = summary(k); o["isDev"] = k == owner; o["owns"] = owns(db["users"][k], std::stoi(id)); out.push_back(o); }
+    std::reverse(out.begin(), out.end()); reply(r, 200, out);
+  });
+  svr.Post(R"(/api/games/(\d+)/comments)", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1];
+    if (n.empty()) return reply(r, 401, err("Log in to comment")); if (!db["games"].contains(id)) return reply(r, 404, err("Not found"));
+    if (db["games"][id].value("status", "approved") != "approved") return reply(r, 400, err("You can comment once the game is in the store"));
+    auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string t; for (unsigned char c : b.value("text", std::string())) if (c >= 32 || c == '\n') t += (char)c;
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\n')) t.pop_back(); while (!t.empty() && (t[0] == ' ' || t[0] == '\n')) t.erase(0, 1);
+    if (t.empty()) return reply(r, 400, err("Write something first")); if (t.size() > 1000) return reply(r, 400, err("Comments can be at most 1000 characters"));
+    long now = (long)time(nullptr); if (now - lastComment[n] < 5) return reply(r, 429, err("Slow down: wait a few seconds between comments")); lastComment[n] = now;
+    if (!db.contains("comments")) db["comments"] = json::object(); if (!db["comments"].contains(id)) db["comments"][id] = json::array();
+    std::string cid = randHex(8); db["comments"][id].push_back({{"id", cid}, {"user", n}, {"text", t}, {"at", now}});
+    save(); reply(r, 200, {{"ok", true}, {"id", cid}});
+  });
+  svr.Delete(R"(/api/games/(\d+)/comments/([0-9a-f]+))", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto n = whoami(q); std::string id = q.matches[1], cid = q.matches[2];
+    if (n.empty()) return reply(r, 401, err("Log in first"));
+    if (!db.contains("comments") || !db["comments"].contains(id)) return reply(r, 404, err("Comment not found"));
+    auto& list = db["comments"][id];
+    for (size_t i = 0; i < list.size(); i++) if (list[i]["id"] == cid) {
+      std::string by = list[i]["user"]; if (by != n && !isMod(n)) return reply(r, 403, err("You can only delete your own comments"));
+      if (by != n) logAct(n, "delete comment", "by @" + db["users"][by]["name"].get<std::string>() + " on " + db["games"][id].value("title", std::string("a game")));
+      list.erase(list.begin() + (long)i); save(); return reply(r, 200, {{"ok", true}}); }
+    reply(r, 404, err("Comment not found"));
   });
   // Serve ./index.html if present (GitHub layout), otherwise the ./web folder.
   if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, "text/html"); });

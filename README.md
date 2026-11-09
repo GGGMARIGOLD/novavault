@@ -35,6 +35,12 @@ Admin → 👑 Owner Vault holds 12 exclusive animated cosmetics (Sovereign Halo
 ## Playful buttons
 Dangerous actions use hold-to-confirm (delete, ban, decline) or slide-to-confirm (deleting from a game page). Purchases and approvals throw confetti. Inspired by [Evil Buttons](https://github.com/radiumcoders/evil-buttons) (Apache-2.0); see NOTICE.
 
+## Social
+- **Comments** on games in the store. Authors and admins/moderators can delete comments; the developer is tagged on their own comments.
+- **Follow** anyone (one-way). Profiles show followers, following and friends.
+- **Friends** are two-way: send a request, the other person accepts. The Friends page lists requests, friends (online first) and sent requests, and lets you add someone by username.
+- **Partner badge**: a golden verified seal that only admins can give (Admin → Users → Badges).
+
 ## Notes
 - Credits aren't connected to real money. Wire a payment provider in before selling credits.
 - Put it behind HTTPS before going public.
