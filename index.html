@@ -234,6 +234,7 @@ table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px sol
 .cmx{white-space:pre-wrap;word-break:break-word;margin-top:4px}.cmd{padding:3px 8px;font-size:12px}
 .cm .bdg,.pc .bdg{width:20px;height:20px;border-radius:6px}.cm .bdg svg,.pc .bdg svg{width:13px;height:13px}
 .cm .mini{margin-right:0}.pc .mini{margin-right:0;flex:none}
+.spin{width:34px;height:34px;margin:6px auto 0;border-radius:50%;border:3px solid #2a475e;border-top-color:var(--blue);animation:spin .9s linear infinite}
 </style></head><body>
 <header><div class="bar"><span class="logo" onclick="go('')"><span class="star">✦</span>VESPERA</span><a class="t" onclick="go('')">Store</a><a class="t" onclick="go('library')">Library</a><a class="t" onclick="go('friends')">Friends<span id="frn"></span></a><a class="t" onclick="go('shop')">Profile Shop</a><a class="t" onclick="go('publish')">Publish</a><a class="t" id="modlink" onclick="go('admin')" hidden></a><span class="sp"></span><span id="acct"></span></div></header>
 <div id="announce" hidden></div>
@@ -249,7 +250,11 @@ const GR=["#2b5876,#4e4376","#614385,#516395","#134e5e,#71b280","#42275a,#734b6d
 const art=g=>g.hasCover?`background-image:linear-gradient(transparent 55%,#000a),url(/cover/${g.id})`:`background:linear-gradient(135deg,${GR[g.id%GR.length]})`;
 const sz=b=>b>=1e9?(b/1e9).toFixed(2)+" GB":(b/1e6).toFixed(1)+" MB";
 function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2800)}
-async function api(p,o={}){const c=new AbortController(),t=setTimeout(()=>c.abort(),30000);try{const r=await fetch(p,{...o,signal:c.signal}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Request failed ("+r.status+" "+p+")");return j}catch(e){throw new Error(e.name==="AbortError"?"The server didn't answer in time ("+p+")":e.message)}finally{clearTimeout(t)}}
+async function api(p,o={}){const c=new AbortController(),t=setTimeout(()=>c.abort(),15000);let r;
+ try{r=await fetch(p,{...o,signal:c.signal})}catch(e){const x=new Error(e.name==="AbortError"?"The server didn't answer in time":"Can't reach the Vespera server");x.offline=true;throw x}finally{clearTimeout(t)}
+ const j=await r.json().catch(()=>null);
+ if(!j&&(r.status>=500||!r.ok||(r.headers.get("content-type")||"").indexOf("json")<0)){const x=new Error("The Vespera server isn't responding ("+r.status+")");x.offline=true;throw x}
+ if(!r.ok)throw new Error((j&&j.error)||"Request failed ("+r.status+" "+p+")");return j}
 const post=(p,b)=>api(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});
 const go=h=>{location.hash="#/"+h};
 function price(g){return g.sale>0&&g.sale<g.price?`<span class="pr"><span class="dc">-${Math.round(100-g.sale/g.price*100)}%</span><s>${usd(g.price)}</s><b>${usd(g.sale)}</b></span>`:`<span class="pr">${usd(g.price)}</span>`}
@@ -260,7 +265,12 @@ async function refresh(){const [m,g]=await Promise.all([api("/api/me"),api("/api
  $("#frn").innerHTML=me&&me.friendRequests?`<span class="n">${me.friendRequests}</span>`:"";const ml=$("#modlink");ml.hidden=!(me&&["mod","admin"].includes(me.role));ml.textContent=me&&me.role==="admin"?"Admin":"Moderation";
  $("#acct").innerHTML=me?`<span class="me" title="Credits are added by an admin">◆ ${crTxt(me.balance)}</span> <button onclick="logout()">Log out</button>`:`<button onclick="go('login')">Log in</button>`}
 async function logout(){await post("/api/logout");go("");route()}
-async function route(){try{await route0()}catch(e){$("#app").innerHTML=`<div class="box" style="max-width:520px;margin:40px auto"><h2 style="margin-top:0;border:0">Something went wrong</h2><p style="color:#ff8a8a">${esc(e.message)}</p><button class="buy" onclick="route()">Try again</button></div>`}}
+let retryT=0;
+async function route(){clearTimeout(retryT);try{await route0()}catch(e){
+ if(e.offline){$("#app").innerHTML=`<div class="box" style="max-width:560px;margin:40px auto;text-align:center"><div class="spin"></div><h2 style="margin:12px 0 6px;border:0">Connecting to the server…</h2>
+  <p style="color:#8f98a0;margin:0 0 6px">${esc(e.message)}. Vespera will reconnect by itself as soon as it's back.</p>
+  <p style="color:#8f98a0;font-size:13px;margin:0">If you just restarted it, wait until the terminal says <b style="color:#fff">Vespera running</b>. If it never does, the terminal shows why.</p></div>`;retryT=setTimeout(route,3000);return}
+ $("#app").innerHTML=`<div class="box" style="max-width:520px;margin:40px auto"><h2 style="margin-top:0;border:0">Something went wrong</h2><p style="color:#ff8a8a">${esc(e.message)}</p><button class="buy" onclick="route()">Try again</button></div>`}}
 async function route0(){await refresh();const p=location.hash.replace(/^#\//,"").split("/"),v=p[0];
  if(v==="game")return gamePage(+p[1]);if(v==="library")return libPage();if(v==="publish")return pubPage();if(v==="edit")return pubPage(+p[1]);if(v==="shop")return shopPage();if(v==="friends")return friendsPage();if(v==="people")return peoplePage(decodeURIComponent(p[1]||""),p[2]);if(v==="admin")return adminPage();if(v==="profile")return profilePage(decodeURIComponent(p[1]||""));if(v==="settings")return settingsPage();if(v==="login")return authPage();storePage()}
 function storePage(){const gs=[...new Set(pg().map(g=>g.genre).filter(Boolean))],list=pg().filter(g=>(genre==="All"||g.genre===genre)&&(g.title+g.dev).toLowerCase().includes(q.toLowerCase())),f=pg().find(g=>g.featured)||pg()[0];
