@@ -3,3 +3,5 @@ novavault
 data/
 web/
 img/target/
+dist/
+index_embed.h

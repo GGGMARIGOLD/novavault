@@ -2,11 +2,14 @@
 
 A game store written in C++17 (server) and Rust (image tool): accounts, credits, store, library, game uploads (.exe, .apk, .zip…), reviews, an admin panel, Discord-style profiles and a Profile Shop.
 
+## Run it on Windows (easiest)
+Download **Vespera-Windows.zip** from the repo's Releases page ("Windows app (latest)"), unzip it and double-click **Vespera.exe**. It starts the server and opens Vespera in your browser. Data is saved in the `data` folder next to the .exe. GitHub builds a fresh zip on every push to main (see `.github/workflows/windows.yml`), or build it yourself on Linux with `make windows`.
+
 ## Run it in GitHub Codespaces (easiest)
 Click **Code → Codespaces → Create codespace**. It installs everything, builds, starts the server and opens the site in your browser. If the browser doesn't open, use the **Ports** tab and click port 8080.
 
 ## Run it on Linux
-    sudo apt install g++ make libssl-dev
+    sudo apt install g++ make zlib1g-dev
     make run          # http://localhost:8080   (PORT=3000 ./vespera to change)
     make restart      # stop a Vespera that's already running, rebuild and start again
 

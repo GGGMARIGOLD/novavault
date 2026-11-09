@@ -1,10 +1,23 @@
-// Vespera - a game store server in C++17.
-// Accounts, wallet, store, library, APK/game uploads, owner-only downloads.
+// Vespera - a game store server in C++17. Builds on Linux and as a single Windows .exe.
+// Accounts, credits, store, library, game uploads, reviews, profiles, social features.
 #define CPPHTTPLIB_ZLIB_SUPPORT  // gzip pages and data for clients that accept it
 #include "httplib.h"
 #include "json.hpp"
-#include <openssl/evp.h>
-#include <openssl/rand.h>
+#include "crypto.h"
+#ifdef _WIN32
+#include <shellapi.h>
+#define popen _popen
+#define pclose _pclose
+static const char* IMG_TOOLS[] = {".\\vespera-img.exe", "img\\target\\release\\vespera-img.exe"};
+static const char* QUIET = " 2>nul";
+#else
+static const char* IMG_TOOLS[] = {"./img/target/release/vespera-img", "./vespera-img"};
+static const char* QUIET = " 2>/dev/null";
+#endif
+#if __has_include("index_embed.h")
+#include "index_embed.h"  // the website, built into the .exe so it runs from a single file
+#define HAVE_EMBEDDED_PAGE 1
+#endif
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -26,10 +39,10 @@ static std::string hex(const unsigned char* b, size_t n) {
   for (size_t i = 0; i < n; i++) { s += d[b[i] >> 4]; s += d[b[i] & 15]; }
   return s;
 }
-static std::string randHex(size_t n) { std::string b(n, 0); RAND_bytes((unsigned char*)&b[0], (int)n); return hex((unsigned char*)b.data(), n); }
+static std::string randHex(size_t n) { std::string b(n, 0); vcrypto::random_bytes(&b[0], n); return hex((unsigned char*)b.data(), n); }
 static std::string hashPw(const std::string& pw, const std::string& salt) {
   unsigned char out[32];
-  PKCS5_PBKDF2_HMAC(pw.c_str(), (int)pw.size(), (const unsigned char*)salt.data(), (int)salt.size(), 200000, EVP_sha256(), 32, out);
+  vcrypto::pbkdf2_sha256(pw, salt, 200000, out);
   return hex(out, 32);
 }
 static void save() { { std::ofstream("data/db.tmp") << db.dump(); } fs::rename("data/db.tmp", "data/db.json"); }
@@ -129,9 +142,9 @@ static json summary(const std::string& k) {
 }
 // Shrinks an uploaded image with the Rust tool (img/), if it's been built. Returns the stored file name to use.
 static std::string optimizeImage(const std::string& kind, const std::string& name) {
-  std::string tool; for (auto p : {"./img/target/release/vespera-img", "./vespera-img"}) if (fs::exists(p)) { tool = p; break; }
+  std::string tool; for (auto p : IMG_TOOLS) if (fs::exists(p)) { tool = p; break; }
   if (tool.empty()) return name;
-  std::string base = randHex(12), cmd = tool + " " + kind + " data/files/" + name + " data/files/" + base + " 2>/dev/null";
+  std::string base = randHex(12), cmd = tool + " " + kind + " data/files/" + name + " data/files/" + base + QUIET;
   FILE* p = popen(cmd.c_str(), "r"); if (!p) return name;
   char buf[16] = {0}; size_t got = fread(buf, 1, sizeof buf - 1, p); int rc = pclose(p);
   std::string ext(buf, got); while (!ext.empty() && (ext.back() == '\n' || ext.back() == '\r')) ext.pop_back();
@@ -221,7 +234,13 @@ int main() {
   httplib::Server svr;
   // Only one Vespera may own the port. (The web library allows port sharing by default, which let two
   // copies run at once with separate data and logins, overwriting each other's saves.)
-  svr.set_socket_options([](socket_t sock) { int yes = 1; setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)); });
+  svr.set_socket_options([](socket_t sock) { int yes = 1;
+#ifdef _WIN32
+    setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&yes), sizeof(yes));  // Windows: never share the port
+#else
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
+#endif
+  });
   svr.set_payload_max_length(64ULL << 20); // single requests are small: big game files arrive in chunks
 
   svr.Post("/api/register", [&](const httplib::Request& q, httplib::Response& r) {
@@ -746,11 +765,19 @@ int main() {
   });
   // Serve ./index.html if present (GitHub layout), otherwise the ./web folder.
   static std::mutex pageMu; static std::string pageBody, pageTag; static fs::file_time_type pageTime;
-  if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request& q, httplib::Response& r) {
+  bool havePage = fs::exists("index.html");
+#ifdef HAVE_EMBEDDED_PAGE
+  havePage = true;
+#endif
+  if (havePage) svr.Get("/", [&](const httplib::Request& q, httplib::Response& r) {
     std::string body, tag;
-    { std::lock_guard<std::mutex> l(pageMu); std::error_code ec; auto t = fs::last_write_time("index.html", ec);
-      if (pageBody.empty() || t != pageTime) { std::ifstream f("index.html"); pageBody.assign((std::istreambuf_iterator<char>(f)), {}); pageTime = t;
-        pageTag = "\"" + std::to_string(std::hash<std::string>{}(pageBody)) + "\""; }
+    { std::lock_guard<std::mutex> l(pageMu); std::error_code ec;
+      if (fs::exists("index.html")) { auto t = fs::last_write_time("index.html", ec);
+        if (pageBody.empty() || t != pageTime) { std::ifstream f("index.html"); pageBody.assign((std::istreambuf_iterator<char>(f)), {}); pageTime = t; pageTag.clear(); } }
+#ifdef HAVE_EMBEDDED_PAGE
+      else if (pageBody.empty()) pageBody = VESPERA_PAGE;
+#endif
+      if (pageTag.empty()) pageTag = "\"" + std::to_string(std::hash<std::string>{}(pageBody)) + "\"";
       body = pageBody; tag = pageTag; }
     r.set_header("ETag", tag); r.set_header("Cache-Control", "no-cache");
     if (q.get_header_value("If-None-Match") == tag) { r.status = 304; return; }
@@ -758,9 +785,19 @@ int main() {
   else svr.set_mount_point("/", "./web");
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
   if (!svr.bind_to_port("0.0.0.0", port)) {
+#ifdef _WIN32
+    fprintf(stderr, "\nVespera couldn't start: port %d is already in use.\nVespera is probably already running in another window. Close that window, then open Vespera again.\n\n", port);
+    MessageBoxA(nullptr, "Vespera is already running.\n\nClose the other Vespera window first, then open Vespera again.", "Vespera", MB_OK | MB_ICONINFORMATION);
+#else
     fprintf(stderr, "\nVespera couldn't start: port %d is already in use.\nAnother Vespera is probably still running. Run:  make restart\n\n", port);
+#endif
     return 1;
   }
   printf("Vespera running on http://localhost:%d\n", port);
+#ifdef _WIN32
+  SetConsoleTitleA("Vespera server - close this window to stop Vespera");
+  printf("Keep this window open while you use Vespera. Close it to stop the server.\n");
+  if (!getenv("VESPERA_NO_BROWSER")) ShellExecuteA(nullptr, "open", ("http://localhost:" + std::to_string(port)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#endif
   svr.listen_after_bind();
 }

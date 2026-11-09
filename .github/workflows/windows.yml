@@ -1,0 +1,37 @@
+# Builds the Windows app (Vespera.exe + the Rust image tool) on every push to main
+# and publishes it as the "Windows app (latest)" release, ready to download.
+name: Build Windows app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows cross-compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-mingw-w64-x86-64-posix libz-mingw-w64-dev zip
+          rustup target add x86_64-pc-windows-gnu
+      - name: Build Vespera.exe and vespera-img.exe
+        run: make windows
+      - name: Package
+        run: |
+          cp README-Windows.txt dist/
+          cd dist && zip -9 ../Vespera-Windows.zip Vespera.exe vespera-img.exe README-Windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vespera-Windows
+          path: Vespera-Windows.zip
+      - name: Publish the latest Windows app
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-latest
+          name: Windows app (latest)
+          body: "Download **Vespera-Windows.zip**, unzip it, and double-click **Vespera.exe**. Built automatically from the latest code."
+          files: Vespera-Windows.zip
+          make_latest: true

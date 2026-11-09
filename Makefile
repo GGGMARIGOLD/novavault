@@ -1,8 +1,8 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wno-misleading-indentation -pthread
-LDLIBS = -lssl -lcrypto -lz
+LDLIBS = -lz
 
-.PHONY: img run restart deps
+.PHONY: img run restart deps windows
 
 vespera: main.cpp httplib.h json.hpp
 	$(CXX) $(CXXFLAGS) main.cpp -o vespera $(LDLIBS)
@@ -22,3 +22,12 @@ run: vespera img
 restart: vespera img
 	-pkill -x vespera; sleep 1
 	./vespera
+
+# Windows build: one self-contained Vespera.exe (website included), cross-compiled from Linux.
+# Needs: sudo apt install g++-mingw-w64-x86-64-posix libz-mingw-w64-dev
+windows:
+	mkdir -p dist
+	{ printf 'static const char* VESPERA_PAGE = R"VSPHTML('; cat index.html; printf ')VSPHTML";\n'; } > index_embed.h
+	x86_64-w64-mingw32-g++ -std=c++17 -O2 -D_WIN32_WINNT=0x0A00 -static -pthread main.cpp -o dist/Vespera.exe -lws2_32 -lbcrypt -lz -lshell32
+	rm -f index_embed.h
+	-@command -v cargo >/dev/null && cargo build --release -q --manifest-path img/Cargo.toml --target x86_64-pc-windows-gnu && cp img/target/x86_64-pc-windows-gnu/release/vespera-img.exe dist/ || echo "(Rust Windows target not installed: Vespera.exe will keep images as uploaded)"
