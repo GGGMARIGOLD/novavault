@@ -241,34 +241,24 @@ table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px sol
 .flock .fl-i{position:absolute;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff5a4e,#b3122e 70%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #2a0b0b,0 2px 10px #000a,0 0 14px #ff2e2e66}
 .flock .fl-i svg{width:17px;height:17px}
 .flock.nope{animation:shake .08s linear 5}
-.isbanned header,.isbanned main,.isbanned #dock,.isbanned .foot,.isbanned #announce{display:none!important}
-#banwrap{position:fixed;inset:0;z-index:50;overflow:auto;display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse 70% 50% at 50% -5%,rgba(214,69,65,.32),transparent 70%),radial-gradient(ellipse 60% 40% at 50% 110%,rgba(120,20,40,.35),transparent 70%),#0a0d13}
-#banwrap::before{content:"";position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:44px 44px;-webkit-mask:radial-gradient(ellipse at 50% 40%,#000,transparent 75%);mask:radial-gradient(ellipse at 50% 40%,#000,transparent 75%);pointer-events:none}
-.bancard{position:relative;width:100%;max-width:580px;margin:auto;background:linear-gradient(180deg,rgba(30,36,49,.94),rgba(17,21,29,.97));border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:44px 38px 28px;text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.65),0 0 0 1px rgba(214,69,65,.12);overflow:hidden;animation:banin .55s cubic-bezier(.2,.8,.2,1)}
-@keyframes banin{from{opacity:0;transform:translateY(14px) scale(.98)}}
-.banbar{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#b3122e,#ff4d2e,#ffae00)}
-.banicon{position:relative;width:78px;height:78px;margin:0 auto 20px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff6b5e,#b3122e 72%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 9px rgba(214,69,65,.12),0 0 46px rgba(255,77,46,.45)}
-.banicon::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:2px solid rgba(255,77,46,.55);animation:radar 2.4s ease-out infinite}
-.banicon svg{width:40px;height:40px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))}
-.bankick{font:700 11px "Segoe UI",sans-serif;letter-spacing:2.2px;text-transform:uppercase;color:#ff7a6b;margin-bottom:8px}
-.bancard h1{font:700 27px/1.25 "Segoe UI",Roboto,sans-serif;color:#fff;letter-spacing:-.3px;margin:0 0 10px}
-.bansub{color:#aab6c3;margin:0 auto;max-width:440px;line-height:1.55}.bansub b{color:#fff;font-weight:600}
-.banreason{text-align:left;background:rgba(214,69,65,.07);border:1px solid rgba(214,69,65,.22);border-left:3px solid #ff4d2e;border-radius:10px;padding:14px 16px;margin:24px 0 20px}
-.banreason span{display:block;font:700 11px "Segoe UI",sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#ff9b8f;margin-bottom:4px}
-.banreason b{color:#fff;font-size:16px;font-weight:600}.banreason p{margin:6px 0 0;color:#c4ccd6;white-space:pre-wrap;line-height:1.5}
-.bancount{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.cd{background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px 4px 10px}
-.cd b{display:block;font:700 30px "Segoe UI",Roboto,sans-serif;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.5px}
-.cd span{font-size:11px;color:#8f98a0;text-transform:uppercase;letter-spacing:1.2px}
-.banprog{height:6px;border-radius:3px;background:rgba(255,255,255,.07);margin:16px 0 6px;overflow:hidden}.banprog i{display:block;height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#b3122e,#ff4d2e,#ffae00);transition:width .9s linear}
-.banleft{font-size:12px;color:#8f98a0;text-align:right}
-.bangrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin:22px 0 24px;text-align:left}
-.bangrid div{background:#151a23;padding:12px 14px}.bangrid span{display:block;font-size:11px;color:#8f98a0;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:3px}.bangrid b{color:#fff;font-weight:600;font-size:14px}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.5px}
-.cpy{padding:1px 7px;font-size:11px;margin-left:6px;vertical-align:1px}
-.banacts{display:flex;gap:10px;justify-content:center}.banacts button{min-width:140px;padding:10px 18px}
-.banfoot{margin-top:18px;font-size:12px;color:#6f7d8c}
-@media(max-width:520px){.bancard{padding:36px 18px 22px}.bancard h1{font-size:22px}.cd b{font-size:22px}.bangrid{grid-template-columns:1fr}}
+.isbanned header,.isbanned #app,.isbanned #dock,.isbanned .foot,.isbanned #announce{display:none!important}
+#banwrap{position:fixed;inset:0;z-index:50;overflow:auto;display:flex;padding:24px 16px;background:#0c1016}
+.bn{margin:auto;width:100%;max-width:440px;background:#151a22;border:1px solid #232b37;border-radius:14px;padding:36px 32px 26px;color:#c9d2dc;font:15px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif;animation:bnin .35s ease-out}
+@keyframes bnin{from{opacity:0;transform:translateY(8px)}}
+.bn-ic{width:44px;height:44px;border-radius:12px;background:rgba(229,83,75,.12);color:#ef6b63;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.bn-ic svg{width:24px;height:24px}
+.bn h1{font-size:22px;font-weight:650;color:#fff;margin:0 0 6px;letter-spacing:-.2px}
+.bn-sub{margin:0 0 22px;color:#9aa6b4}.bn-sub b{color:#e6ebf0;font-weight:600}
+.bn-rows{margin:0;border-top:1px solid #232b37}
+.bn-rows div{display:grid;grid-template-columns:100px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid #232b37}
+.bn-rows dt{color:#7d8896;font-size:13px;padding-top:1px}.bn-rows dd{margin:0;color:#e6ebf0;min-width:0;overflow-wrap:anywhere}
+.bn-rows dd span{display:block;color:#9aa6b4;font-size:14px;margin-top:4px}
+.bn-num{font-variant-numeric:tabular-nums}
+.bn-cid{background:none;border:0;padding:0;color:#e6ebf0;font:500 14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;cursor:copy}.bn-cid:hover{color:#fff;text-decoration:underline}
+.bn-bar{height:3px;background:#232b37;border-radius:2px;margin-top:16px;overflow:hidden}.bn-bar i{display:block;height:100%;width:0;background:#ef6b63;transition:width .9s linear}
+.bn-acts{display:flex;gap:8px;margin-top:24px}.bn-btn{flex:1;background:#1f2732;color:#e6ebf0;border:1px solid #2c3644;border-radius:8px;padding:10px 12px;font:600 14px inherit}.bn-btn:hover{background:#273141}
+.bn-foot{margin:16px 0 0;font-size:12px;color:#6b7684;text-align:center}
+@media(max-width:480px){.bn{padding:28px 20px 22px}.bn-rows div{grid-template-columns:86px 1fr}}
 .modal{position:fixed;inset:0;z-index:60;background:rgba(5,8,12,.7);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
 .mcard{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:0 20px 60px #000b;animation:banin .3s ease-out}
 .seg{display:flex;flex-wrap:wrap;gap:6px}.seg button{background:#1f2c3b;color:#c7d5e0;padding:6px 12px;border-radius:16px;font-size:13px}.seg button.on{background:#b3122e;color:#fff}
@@ -283,6 +273,7 @@ table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px sol
 .accadd:hover{background:#1b2838}.accadd span{width:34px;height:34px;border-radius:50%;background:#1f2c3b;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
 .accout{border-top:1px solid var(--line);border-radius:0 0 8px 8px;color:#ff9b8f}.accout:hover{background:#2a1414}
 #saved .accrow{background:#0f1923;margin-bottom:6px}
+[hidden]{display:none!important}
 </style></head><body>
 <header><div class="bar"><span class="logo" onclick="go('')"><span class="star">✦</span>VESPERA</span><a class="t" onclick="go('')">Store</a><a class="t" onclick="go('library')">Library</a><a class="t" onclick="go('friends')">Friends<span id="frn"></span></a><a class="t" onclick="go('shop')">Profile Shop</a><a class="t" onclick="go('publish')">Publish</a><a class="t" id="modlink" onclick="go('admin')" hidden></a><span class="sp"></span><span id="acct"></span></div></header>
 <div id="announce" hidden></div>
@@ -556,23 +547,25 @@ const BAN_REASONS=["Spam or scams","Harassment or hate","Cheating or exploits","
 const BAN_LENGTHS=[["1 hour",1],["1 day",24],["3 days",72],["7 days",168],["30 days",720],["Permanent",0]];
 function clearBan(){clearInterval(banT);document.body.classList.remove("isbanned");const w=$("#banwrap");if(w)w.remove()}
 function banScreen(b){clearInterval(banT);document.body.classList.add("isbanned");let w=$("#banwrap");if(!w){w=document.createElement("div");w.id="banwrap";document.body.append(w)}
- const perm=!b.until,skew=b.now*1000-Date.now();
- w.innerHTML=`<div class="bancard" role="alertdialog" aria-labelledby="bant"><div class="banbar"></div>
- <div class="banicon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 2l8 3v6c0 5.2-3.4 9.4-8 11-4.6-1.6-8-5.8-8-11V5z"/><rect x="10.8" y="6.6" width="2.4" height="7.4" rx="1.2" fill="#b3122e"/><circle cx="12" cy="17" r="1.45" fill="#b3122e"/></svg></div>
- <div class="bankick">Vespera · Account status</div>
- <h1 id="bant">${perm?"Your account has been permanently banned":"Your account is suspended"}</h1>
- <p class="bansub"><b>@${esc(b.username)}</b> ${perm?"can no longer use Vespera.":"can't use Vespera until <b>"+fmtWhen(b.until)+"</b>."}</p>
- <div class="banreason"><span>Reason</span><b>${esc(b.reason||"Breaking Vespera's rules")}</b>${b.note?`<p>${esc(b.note)}</p>`:""}</div>
- ${perm?"":`<div class="bancount" aria-live="polite">${["Days","Hours","Minutes","Seconds"].map(l=>`<div class="cd"><b data-u="${l}">00</b><span>${l}</span></div>`).join("")}</div><div class="banprog"><i id="bpi"></i></div><div class="banleft" id="bleft"></div>`}
- <div class="bangrid"><div><span>Status</span><b>${perm?"Permanent ban":"Temporary suspension"}</b></div><div><span>Started</span><b>${b.at?fmtWhen(b.at):"—"}</b></div>
- <div><span>Ends</span><b>${perm?"Never":fmtWhen(b.until)}</b></div><div><span>Case ID</span><b class="mono">${esc(b.caseId)} <button class="cpy" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(b.caseId)}');toast('Case ID copied')" aria-label="Copy case ID">Copy</button></b></div></div>
- <div class="banacts"><button onclick="toggleAcc(event)">Switch account</button><button onclick="logout()">Log out</button><button class="buy" onclick="route()">Check again</button></div>
- <div class="banfoot">Think this is a mistake? Contact a Vespera admin and include your case ID.</div></div>`;
- if(perm)return;
- const tick=()=>{const now=Date.now()+skew,left=Math.max(0,b.until*1000-now),tot=Math.max(1,(b.until-b.at)*1000),d=Math.floor(left/864e5),hh=Math.floor(left/36e5)%24,mm=Math.floor(left/6e4)%60,ss=Math.floor(left/1e3)%60;
-  [d,hh,mm,ss].forEach((v,i)=>{const e=w.querySelector(`[data-u="${["Days","Hours","Minutes","Seconds"][i]}"]`);if(e)e.textContent=String(v).padStart(2,"0")});
-  const bp=$("#bpi");if(bp)bp.style.width=Math.min(100,(1-left/tot)*100)+"%";const bl=$("#bleft");if(bl)bl.textContent=Math.round((1-left/tot)*100)+"% of your suspension served";
-  if(left<=0){clearInterval(banT);$("#bant").textContent="Your suspension has ended";bl.textContent="Welcome back. Loading Vespera…";setTimeout(route,1500)}};
+ const perm=!b.until,skew=b.now*1000-Date.now(),when=t=>new Date(t*1000).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
+ w.innerHTML=`<div class="bn" role="alertdialog" aria-labelledby="bnt">
+ <div class="bn-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 2.6v5.6c0 4.6-3 8.3-7 9.8-4-1.5-7-5.2-7-9.8V5.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 8v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16" r="1.1" fill="currentColor"/></svg></div>
+ <h1 id="bnt">${perm?"Account banned":"Account suspended"}</h1>
+ <p class="bn-sub">${perm?`<b>@${esc(b.username)}</b> has been permanently banned from Vespera.`:`<b>@${esc(b.username)}</b> can't use Vespera until ${when(b.until)}.`}</p>
+ <dl class="bn-rows">
+  <div><dt>Reason</dt><dd>${esc(b.reason||"Breaking Vespera's rules")}${b.note?`<span>${esc(b.note)}</span>`:""}</dd></div>
+  ${perm?"":`<div><dt>Time left</dt><dd id="bnleft" class="bn-num">—</dd></div>`}
+  <div><dt>${perm?"Banned on":"Started"}</dt><dd>${b.at?when(b.at):"—"}</dd></div>
+  <div><dt>Case ID</dt><dd><button class="bn-cid" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(b.caseId)}');toast('Case ID copied')" title="Copy">${esc(b.caseId)}</button></dd></div>
+ </dl>
+ ${perm?"":`<div class="bn-bar"><i id="bnbar"></i></div>`}
+ <div class="bn-acts"><button class="bn-btn" id="bnsw" hidden onclick="toggleAcc(event)">Switch account</button><button class="bn-btn" onclick="logout()">Log out</button></div>
+ <p class="bn-foot">If you think this is a mistake, contact an admin and include your case ID.</p></div>`;
+ api("/api/accounts").then(d=>{if(d.accounts.length>1&&$("#bnsw"))$("#bnsw").hidden=false}).catch(()=>{});
+ let n=0;const tick=()=>{if(++n%30===0)api("/api/me").then(m=>{if(!m.ban)route()}).catch(()=>{});if(perm)return;
+  const left=Math.max(0,b.until*1000-(Date.now()+skew)),tot=Math.max(1,(b.until-b.at)*1000),d=Math.floor(left/864e5),hh=Math.floor(left/36e5)%24,mm=Math.floor(left/6e4)%60,ss=Math.floor(left/1e3)%60;
+  $("#bnleft").textContent=(d?d+"d ":"")+(d||hh?hh+"h ":"")+mm+"m "+String(ss).padStart(2,"0")+"s";$("#bnbar").style.width=Math.min(100,(1-left/tot)*100)+"%";
+  if(left<=0){clearInterval(banT);$("#bnt").textContent="Suspension over";$("#bnleft").textContent="Welcome back";setTimeout(route,1200)}};
  tick();banT=setInterval(tick,1000)}
 let banSel={reason:BAN_REASONS[0],hours:24};
 function openBan(key,name){banSel={reason:BAN_REASONS[0],hours:24};const m=document.createElement("div");m.className="modal";m.id="banmodal";m.onclick=e=>{if(e.target===m)m.remove()};
