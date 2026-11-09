@@ -64,12 +64,30 @@ static json banInfo(const std::string& k) {
   return {{"username", u["name"]}, {"display", displayOf(u)}, {"reason", u.value("banReason", "")}, {"note", u.value("banNote", "")},
     {"at", at}, {"until", u.value("banUntil", 0L)}, {"now", (long)time(nullptr)}, {"caseId", cid}};
 }
+static std::string getCookie(const httplib::Request& q, const std::string& name) {
+  std::string c = q.get_header_value("Cookie"); size_t i = 0;
+  while (i < c.size()) { while (i < c.size() && (c[i] == ' ' || c[i] == ';')) i++;
+    size_t e = c.find(';', i); std::string part = c.substr(i, e == std::string::npos ? std::string::npos : e - i);
+    auto eq = part.find('='); if (eq != std::string::npos && part.substr(0, eq) == name) return part.substr(eq + 1);
+    if (e == std::string::npos) break; i = e + 1; }
+  return "";
+}
+static const size_t MAX_ACCOUNTS = 3;
+// Login tokens of every account added to this browser's account switcher (still valid ones only).
+static std::vector<std::string> savedTokens(const httplib::Request& q) {
+  std::vector<std::string> out; std::string v = getCookie(q, "sids"), t; std::stringstream ss(v);
+  while (std::getline(ss, t, '.')) if (sessions.count(t) && db["users"].contains(sessions[t]) && std::find(out.begin(), out.end(), t) == out.end()) out.push_back(t);
+  std::string cur = getCookie(q, "sid"); if (sessions.count(cur) && std::find(out.begin(), out.end(), cur) == out.end()) out.insert(out.begin(), cur);
+  return out;
+}
+static void setSessionCookies(httplib::Response& r, const std::string& active, const std::vector<std::string>& all) {
+  std::string j; for (auto& t : all) j += (j.empty() ? "" : ".") + t;
+  r.set_header("Set-Cookie", active.empty() ? "sid=; Path=/; Max-Age=0" : "sid=" + active + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000");
+  r.set_header("Set-Cookie", j.empty() ? "sids=; Path=/; Max-Age=0" : "sids=" + j + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000");
+}
 // The logged-in account for this request, even if it is banned.
 static std::string sessionUser(const httplib::Request& q) {
-  std::string c = q.get_header_value("Cookie"); auto p = c.find("sid=");
-  if (p == std::string::npos) return "";
-  auto e = c.find(';', p); auto t = c.substr(p + 4, e == std::string::npos ? e : e - p - 4);
-  auto it = sessions.find(t); if (it == sessions.end() || !db["users"].contains(it->second)) return ""; return it->second;
+  auto it = sessions.find(getCookie(q, "sid")); if (it == sessions.end() || !db["users"].contains(it->second)) return ""; return it->second;
 }
 // The logged-in account allowed to act (banned accounts can't).
 static std::string whoami(const httplib::Request& q) { auto k = sessionUser(q); if (k.empty() || stillBanned(k)) return ""; return k; }
@@ -201,14 +219,44 @@ int main() {
     auto& u = db["users"][n];
     if (hashPw(b.value("password", ""), u["salt"]) != u["hash"]) return reply(r, 401, err("Wrong username or password"));
     stillBanned(n);
-    std::string t = randHex(24); sessions[t] = n;
-    r.set_header("Set-Cookie", "sid=" + t + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000");
-    reply(r, 200, {{"ok", true}});
+    auto list = savedTokens(q); std::vector<std::string> keep;
+    for (auto& t : list) { if (sessions[t] == n) sessions.erase(t); else keep.push_back(t); }
+    while (keep.size() >= MAX_ACCOUNTS) keep.erase(keep.begin());
+    std::string t = randHex(24); sessions[t] = n; keep.insert(keep.begin(), t);
+    setSessionCookies(r, t, keep); reply(r, 200, {{"ok", true}});
   });
   svr.Post("/api/logout", [&](const httplib::Request& q, httplib::Response& r) {
-    std::lock_guard<std::mutex> l(mu); std::string c = q.get_header_value("Cookie"); auto p = c.find("sid=");
-    if (p != std::string::npos) sessions.erase(c.substr(p + 4, 48));
-    r.set_header("Set-Cookie", "sid=; Path=/; Max-Age=0"); reply(r, 200, {{"ok", true}});
+    std::lock_guard<std::mutex> l(mu); auto list = savedTokens(q); std::string cur = getCookie(q, "sid");
+    sessions.erase(cur); list.erase(std::remove(list.begin(), list.end(), cur), list.end());
+    std::string next = list.empty() ? "" : list.front(); setSessionCookies(r, next, list);
+    reply(r, 200, {{"ok", true}, {"switchedTo", next.empty() ? json(nullptr) : json(db["users"][sessions[next]]["name"])}});
+  });
+  svr.Get("/api/accounts", [&](const httplib::Request& q, httplib::Response& r) {
+    std::lock_guard<std::mutex> l(mu); auto list = savedTokens(q); std::string cur = getCookie(q, "sid"); json out = json::array();
+    for (auto& t : list) { std::string k = sessions[t]; json s = summary(k); s["active"] = t == cur; s["banned"] = stillBanned(k); out.push_back(s); }
+    reply(r, 200, {{"accounts", out}, {"max", MAX_ACCOUNTS}});
+  });
+  svr.Post("/api/accounts/add", [&](const httplib::Request& q, httplib::Response& r) {
+    auto b = json::parse(q.body, nullptr, false); std::lock_guard<std::mutex> l(mu);
+    if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string n = lower(b.value("username", "").substr(0, 40)); if (!n.empty() && n[0] == '@') n.erase(0, 1);
+    if (!db["users"].contains(n) || hashPw(b.value("password", ""), db["users"][n]["salt"]) != db["users"][n]["hash"]) return reply(r, 401, err("Wrong username or password"));
+    auto list = savedTokens(q);
+    for (auto& t : list) if (sessions[t] == n) { setSessionCookies(r, t, list); return reply(r, 200, {{"ok", true}, {"already", true}}); }
+    if (list.size() >= MAX_ACCOUNTS) return reply(r, 400, err("You can add up to 3 accounts. Remove one first."));
+    stillBanned(n); std::string t = randHex(24); sessions[t] = n; list.push_back(t);
+    setSessionCookies(r, t, list); reply(r, 200, {{"ok", true}});
+  });
+  svr.Post(R"(/api/accounts/(switch|remove))", [&](const httplib::Request& q, httplib::Response& r) {
+    auto b = json::parse(q.body, nullptr, false); std::lock_guard<std::mutex> l(mu);
+    if (!b.is_object()) return reply(r, 400, err("Bad request"));
+    std::string k = lower(b.value("username", "")); auto list = savedTokens(q); std::string cur = getCookie(q, "sid"), tok;
+    for (auto& t : list) if (sessions[t] == k) tok = t;
+    if (tok.empty()) return reply(r, 404, err("That account isn't in your switcher"));
+    if (q.matches[1] == "switch") { setSessionCookies(r, tok, list); return reply(r, 200, {{"ok", true}}); }
+    sessions.erase(tok); list.erase(std::remove(list.begin(), list.end(), tok), list.end());
+    std::string active = tok == cur ? (list.empty() ? "" : list.front()) : cur; setSessionCookies(r, active, list);
+    reply(r, 200, {{"ok", true}});
   });
   svr.Get("/api/me", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);

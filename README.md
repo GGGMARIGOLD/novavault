@@ -36,6 +36,9 @@ Admin → 👑 Owner Vault holds 12 exclusive animated cosmetics (Sovereign Halo
 ## Playful buttons
 Dangerous actions use hold-to-confirm (delete, ban, decline) or slide-to-confirm (deleting from a game page). Purchases and approvals throw confetti. Inspired by [Evil Buttons](https://github.com/radiumcoders/evil-buttons) (Apache-2.0); see NOTICE.
 
+## Switch accounts
+Click ⇅ on your profile card (bottom left) to add up to 3 accounts and switch between them with a click. You sign in to each account once; the browser keeps only secure login tokens, never passwords. Logging out of one account moves you to the next saved one. Banned accounts can switch away from their ban screen.
+
 ## Bans
 Admins ban from Admin → Users → Ban…: pick a reason (or write one), add an optional message, choose 1 hour, 1 day, 3 days, 7 days, 30 days or permanent, then hold to confirm. The banned person sees a suspension screen with the reason, the exact end time, a live countdown, and a case ID. Timed bans end by themselves and their games return to the store.
 
