@@ -21,7 +21,7 @@ Upload .exe, .msi, .apk, .zip and other game files up to 4 GB. Files are sent in
 - Moderators see only the review queue.
 
 ## Profiles
-Avatar, banner, status, status message, bio and up to 3 badges. Your profile card sits in the bottom-left corner.
+Display name, @username, avatar, banner, status, status message, bio and badge icons (hover a badge to see what it means). Anyone can change their display name in profile settings; only admins can change usernames (Admin → Users → Change username). Your profile card sits in the bottom-left corner.
 
 ## Updating games
 Developers click **Update game** on their game page. Before a game is accepted, edits apply straight away and it goes back to review. After it's accepted, changes (new file, details, cover) become an update that an admin reviews; the current version stays live until the update is accepted. The price of an accepted game is locked: only admins can change it (Admin → Games → Price).
