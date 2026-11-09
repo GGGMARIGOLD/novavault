@@ -1,6 +1,12 @@
 VESPERA FOR WINDOWS
 ===================
 
+TO PUT VESPERA ONLINE: double-click "Start Vespera Online.bat". It starts
+Vespera and prints a public link ending in .trycloudflare.com. Share it.
+Create your admin account BEFORE you share the link.
+
+TO USE IT ONLY ON THIS PC:
+
 1. Unzip this folder somewhere you'll keep it (for example Documents\Vespera).
 2. Double-click Vespera.exe.
 3. Vespera opens in your web browser at http://localhost:8080.
