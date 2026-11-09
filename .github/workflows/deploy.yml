@@ -1,4 +1,8 @@
-name: Deploy Website to Pages
+# Publishes site/ — the download page — to GitHub Pages.
+# Not the app itself: index.html at the repo root is served by the Vespera
+# binary at runtime and needs the /api endpoints, so on a static host it can
+# only ever sit there saying "Connecting to the server...".
+name: Deploy Download Page to Pages
 
 on:
   push:
@@ -29,7 +33,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-pages-artifact@v3
       with:
-        path: '.'
+        path: 'site'
 
     - name: Deploy to GitHub Pages
       id: deployment

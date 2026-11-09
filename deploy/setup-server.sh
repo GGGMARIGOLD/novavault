@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Sets up Vespera on a fresh Ubuntu server so it runs 24/7 on your domain with HTTPS.
-#   curl -fsSL https://raw.githubusercontent.com/GGGMARIGOLD/novavault/main/deploy/setup-server.sh | sudo bash -s yourdomain.com
+#   curl -fsSL https://raw.githubusercontent.com/GGGMARIGOLD/vespera/main/deploy/setup-server.sh | sudo bash -s yourdomain.com
 # Safe to run again: it updates Vespera and keeps your data.
 set -euo pipefail
 
 DOMAIN="${1:-}"
-REPO="${VESPERA_REPO:-https://github.com/GGGMARIGOLD/novavault}"
+REPO="${VESPERA_REPO:-https://github.com/GGGMARIGOLD/vespera}"
 APP=/opt/vespera
 
 if [ -z "$DOMAIN" ]; then echo "Usage: sudo bash setup-server.sh yourdomain.com"; exit 1; fi
