@@ -784,7 +784,8 @@ int main() {
     r.set_content(body, "text/html; charset=utf-8"); });
   else svr.set_mount_point("/", "./web");
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
-  if (!svr.bind_to_port("0.0.0.0", port)) {
+  std::string host = getenv("HOST") ? getenv("HOST") : "0.0.0.0";  // HOST=127.0.0.1 keeps it private behind a web server
+  if (!svr.bind_to_port(host, port)) {
 #ifdef _WIN32
     fprintf(stderr, "\nVespera couldn't start: port %d is already in use.\nVespera is probably already running in another window. Close that window, then open Vespera again.\n\n", port);
     MessageBoxA(nullptr, "Vespera is already running.\n\nClose the other Vespera window first, then open Vespera again.", "Vespera", MB_OK | MB_ICONINFORMATION);
