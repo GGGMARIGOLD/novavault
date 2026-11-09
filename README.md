@@ -1,6 +1,6 @@
 # Vespera
 
-A game store written in C++17: accounts, credits, store, library, game uploads (.exe, .apk, .zip…), reviews, an admin panel, Discord-style profiles and a Profile Shop.
+A game store written in C++17 (server) and Rust (image tool): accounts, credits, store, library, game uploads (.exe, .apk, .zip…), reviews, an admin panel, Discord-style profiles and a Profile Shop.
 
 ## Run it in GitHub Codespaces (easiest)
 Click **Code → Codespaces → Create codespace**. It installs everything, builds, starts the server and opens the site in your browser. If the browser doesn't open, use the **Ports** tab and click port 8080.
@@ -12,13 +12,19 @@ Click **Code → Codespaces → Create codespace**. It installs everything, buil
 
 Data lives in `data/` (db.json + uploaded files). Back it up.
 
+## Rust image tool (img/)
+`vespera-img` is a small Rust program the server runs on every uploaded avatar, banner and game cover. It resizes them to the size they're shown at and recompresses them (JPEG, or PNG when the image has transparency), which makes pages much lighter: a 2.6 MB banner becomes about 0.5 MB. It refuses "decompression bomb" images. `make run` and `make restart` build it automatically when Rust is installed; without Rust, Vespera still works and keeps uploads as they are.
+
+## Speed
+Pages and data are gzip-compressed, the page is kept in memory and revalidated with an ETag, and images carry a version in their URL so browsers cache them until they change.
+
 ## Publishing
 Upload .exe, .msi, .apk, .zip and other game files up to 4 GB. Files are sent in 8 MB pieces, so large games upload reliably and a dropped connection resumes instead of starting over.
 
 ## Review and the admin panel
 - The first account on a fresh server is the admin. To make an existing account the admin: `ADMIN_USER=name ./vespera` (the Codespace does this for MARIGOLD).
 - Every game from a non-admin goes to the **review queue** first. Admins and moderators accept it or decline it with a reason; the developer sees the result under Library → My submissions and can resubmit a declined game.
-- Admin panel tabs: **Overview** (stats, top games, recent activity), **Review queue**, **Games** (feature, unpublish, change price, delete), **Users** (add or remove credits, badges, moderators, timed or permanent bans with a reason, unban), **Activity** (log of every action) and **Settings** (store announcement banner).
+- Admin panel tabs: **Overview** (stats, top games, recent activity), **Review queue**, **Games** (feature, unpublish, change price, delete), **Users** (add or remove credits, badges, moderators, timed or permanent bans with a reason, unban), **Activity** (log of every action) and **Settings** (store announcement banner, support email shown on the ban screen).
 - Moderators see only the review queue.
 
 ## Profiles

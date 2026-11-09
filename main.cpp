@@ -1,5 +1,6 @@
 // Vespera - a game store server in C++17.
 // Accounts, wallet, store, library, APK/game uploads, owner-only downloads.
+#define CPPHTTPLIB_ZLIB_SUPPORT  // gzip pages and data for clients that accept it
 #include "httplib.h"
 #include "json.hpp"
 #include <openssl/evp.h>
@@ -43,7 +44,7 @@ static std::string lower(std::string s) { for (auto& c : s) c = (char)tolower(c)
 static void reply(httplib::Response& r, int code, const json& j) { r.status = code; r.set_content(j.dump(), "application/json"); }
 static json err(const std::string& m) { return {{"error", m}}; }
 static long eff(const json& g) { long p = g.value("price", 0L), s = g.value("sale", 0L); return (s > 0 && s < p) ? s : p; }
-static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o.erase("revenue"); o.erase("update"); o["status"] = g.value("status", "approved"); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
+static json pub(const json& g) { json o = g; o.erase("file"); o.erase("cover"); o.erase("revenue"); o.erase("update"); o["status"] = g.value("status", "approved"); o["coverV"] = g.value("cover", ""); o["hasCover"] = g.contains("cover") && g["cover"] != ""; return o; }
 
 // Returns the logged-in username or "" (caller holds mu).
 static void logAct(const std::string& who, const std::string& what, const std::string& detail);
@@ -62,7 +63,8 @@ static json banInfo(const std::string& k) {
   unsigned h = 2166136261u; for (char c : k + std::to_string(at)) h = (h ^ (unsigned char)c) * 16777619u;
   char cid[16]; snprintf(cid, sizeof cid, "VSP-%08X", h);
   return {{"username", u["name"]}, {"display", displayOf(u)}, {"reason", u.value("banReason", "")}, {"note", u.value("banNote", "")},
-    {"at", at}, {"until", u.value("banUntil", 0L)}, {"now", (long)time(nullptr)}, {"caseId", cid}};
+    {"at", at}, {"until", u.value("banUntil", 0L)}, {"now", (long)time(nullptr)}, {"caseId", cid},
+    {"supportEmail", db.value("settings", json::object()).value("supportEmail", "")}};
 }
 static std::string getCookie(const httplib::Request& q, const std::string& name) {
   std::string c = q.get_header_value("Cookie"); size_t i = 0;
@@ -122,8 +124,30 @@ static std::string mimeOf(const std::string& p) { auto e = p.substr(p.find_last_
 static json shownBadges(const std::string& n);
 static json summary(const std::string& k) {
   auto& u = db["users"][k]; std::string pr = u.value("presence", "online"); json eq = u.value("equipped", json::object());
-  return {{"key", k}, {"name", u["name"]}, {"display", displayOf(u)}, {"hasAvatar", u.value("avatar", "") != ""}, {"presence", pr == "invisible" ? "offline" : pr},
+  return {{"key", k}, {"name", u["name"]}, {"display", displayOf(u)}, {"hasAvatar", u.value("avatar", "") != ""}, {"avatarV", u.value("avatar", "")}, {"presence", pr == "invisible" ? "offline" : pr},
     {"statusText", u.value("statusText", "")}, {"frame", eq.value("frame", "")}, {"nameStyle", eq.value("name", "")}, {"badges", shownBadges(k)}, {"banned", u.value("banned", false)}, {"friendsLocked", u.value("friendsLocked", false)}};
+}
+// Shrinks an uploaded image with the Rust tool (img/), if it's been built. Returns the stored file name to use.
+static std::string optimizeImage(const std::string& kind, const std::string& name) {
+  std::string tool; for (auto p : {"./img/target/release/vespera-img", "./vespera-img"}) if (fs::exists(p)) { tool = p; break; }
+  if (tool.empty()) return name;
+  std::string base = randHex(12), cmd = tool + " " + kind + " data/files/" + name + " data/files/" + base + " 2>/dev/null";
+  FILE* p = popen(cmd.c_str(), "r"); if (!p) return name;
+  char buf[16] = {0}; size_t got = fread(buf, 1, sizeof buf - 1, p); int rc = pclose(p);
+  std::string ext(buf, got); while (!ext.empty() && (ext.back() == '\n' || ext.back() == '\r')) ext.pop_back();
+  if (rc != 0 || (ext != "jpg" && ext != "png")) return name;
+  std::string out = base + "." + ext; std::error_code ec;
+  if (fs::file_size("data/files/" + out, ec) >= fs::file_size("data/files/" + name, ec)) { fs::remove("data/files/" + out, ec); return name; } // keep the smaller one
+  fs::remove("data/files/" + name, ec); return out;
+}
+// Sends a stored file with an ETag. URLs carrying ?v=<current file> are cached by browsers for a year.
+static void sendCached(const httplib::Request& q, httplib::Response& r, const std::string& file, const char* mime) {
+  std::string etag = "\"" + file + "\"";
+  r.set_header("ETag", etag);
+  r.set_header("Cache-Control", q.get_param_value("v") == file ? "public, max-age=31536000, immutable" : "no-cache");
+  if (q.get_header_value("If-None-Match") == etag) { r.status = 304; return; }
+  std::ifstream f("data/files/" + file, std::ios::binary); if (!f) { r.status = 404; return; }
+  std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_content(d, mime);
 }
 static bool owns(const json& u, int id) { for (auto& x : u["library"]) if (x == id) return true; return false; }
 static std::string safeName(std::string n) { for (auto& c : n) if (!isalnum((unsigned char)c) && c != '.' && c != '-' && c != '_') c = '_'; return n.empty() ? "game.bin" : n; }
@@ -262,7 +286,8 @@ int main() {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
     if (n.empty()) { auto s = sessionUser(q); if (!s.empty() && stillBanned(s)) return reply(r, 200, {{"user", nullptr}, {"ban", banInfo(s)}});
       return reply(r, 200, {{"user", nullptr}, {"announcement", settings().value("announcement", "")}}); }
-    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"display", displayOf(u)}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}, {"equipped", u.value("equipped", json::object())}, {"friendRequests", u.value("friendReq", json::array()).size()}}}, {"announcement", settings().value("announcement", "")}});
+    auto& u = db["users"][n]; reply(r, 200, {{"user", {{"name", u["name"]}, {"display", displayOf(u)}, {"balance", u["balance"]}, {"library", u["library"]}, {"role", roleOf(n)}, {"equipped", u.value("equipped", json::object())}, {"friendRequests", u.value("friendReq", json::array()).size()},
+      {"avatarV", u.value("avatar", "")}, {"presence", u.value("presence", "online")}, {"statusText", u.value("statusText", "")}}}, {"announcement", settings().value("announcement", "")}});
   });
   svr.Get(R"(/api/profile/(\w+))", [&](const httplib::Request& q, httplib::Response& r) {
     std::lock_guard<std::mutex> l(mu); std::string n = lower(q.matches[1]), me = whoami(q);
@@ -270,7 +295,7 @@ int main() {
     auto& u = db["users"][n]; std::string pr = u.value("presence", "online"); json games = json::array();
     for (auto& [k, g] : db["games"].items()) if (g.value("owner", "") == n && g.value("status", "approved") == "approved") games.push_back(pub(g));
     json p = {{"name", u["name"]}, {"display", displayOf(u)}, {"key", n}, {"role", u.value("role", "user")}, {"bio", u.value("bio", "")}, {"statusText", u.value("statusText", "")},
-      {"presence", (pr == "invisible" && me != n) ? "offline" : pr}, {"badges", shownBadges(n)}, {"hasAvatar", u.value("avatar", "") != ""}, {"hasBanner", u.value("banner", "") != ""},
+      {"presence", (pr == "invisible" && me != n) ? "offline" : pr}, {"badges", shownBadges(n)}, {"hasAvatar", u.value("avatar", "") != ""}, {"hasBanner", u.value("banner", "") != ""}, {"avatarV", u.value("avatar", "")}, {"bannerV", u.value("banner", "")},
       {"joined", u.value("joined", 0L)}, {"games", games}, {"owned", u["library"].size()}, {"equipped", u.value("equipped", json::object())}};
     if (me == n) { p["earned"] = earned(n); p["shown"] = shownBadges(n); }
     long followers = 0; for (auto& [k, x] : db["users"].items()) if (inList(x, "following", n)) followers++;
@@ -296,15 +321,16 @@ int main() {
       auto c = q.get_file_value(ff); std::string ext = c.content_type == "image/png" ? ".png" : c.content_type == "image/jpeg" ? ".jpg" : c.content_type == "image/webp" ? ".webp" : "";
       if (ext.empty()) { bad = "Images must be PNG, JPG or WebP"; return; }
       if (c.content.size() > lim) { bad = "Image is too large"; return; }
-      drop(); std::string nm = randHex(12) + ext; std::ofstream("data/files/" + nm, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); u[key] = nm;
+      drop(); std::string nm = randHex(12) + ext; { std::ofstream("data/files/" + nm, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); }
+      u[key] = optimizeImage(std::string(key) == "avatar" ? "avatar" : "banner", nm);
     };
     img("avatar", "avatar", "removeAvatar", 2u << 20); img("banner", "banner", "removeBanner", 5u << 20);
     save(); if (!bad.empty()) return reply(r, 400, err(bad)); reply(r, 200, {{"ok", true}});
   });
   auto serveImg = [&](const httplib::Request& q, httplib::Response& r, const char* key) {
-    std::string path; { std::lock_guard<std::mutex> l(mu); std::string k = lower(q.matches[1]);
-      if (!db["users"].contains(k) || db["users"][k].value(key, "") == "") { r.status = 404; return; } path = "data/files/" + db["users"][k][key].get<std::string>(); }
-    std::ifstream f(path, std::ios::binary); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, mimeOf(path));
+    std::string file; { std::lock_guard<std::mutex> l(mu); std::string k = lower(q.matches[1]);
+      if (!db["users"].contains(k) || db["users"][k].value(key, "") == "") { r.status = 404; return; } file = db["users"][k][key].get<std::string>(); }
+    sendCached(q, r, file, mimeOf(file).c_str());
   };
   svr.Get(R"(/avatar/(\w+))", [&](const httplib::Request& q, httplib::Response& r) { serveImg(q, r, "avatar"); });
   svr.Get(R"(/banner/(\w+))", [&](const httplib::Request& q, httplib::Response& r) { serveImg(q, r, "banner"); });
@@ -362,7 +388,8 @@ int main() {
     if (!q.has_file("cover")) return "";
     auto c = q.get_file_value("cover"); std::string ext = c.content_type == "image/png" ? ".png" : c.content_type == "image/jpeg" ? ".jpg" : c.content_type == "image/webp" ? ".webp" : "";
     if (ext.empty() || c.content.empty() || c.content.size() >= (8u << 20)) return "";
-    std::string name = randHex(12) + ext; std::ofstream("data/files/" + name, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); return name;
+    std::string name = randHex(12) + ext; { std::ofstream("data/files/" + name, std::ios::binary).write(c.content.data(), (std::streamsize)c.content.size()); }
+    return optimizeImage("cover", name);
   };
   static const char* FIELDS[] = {"title", "desc", "genre", "platform", "version", "os", "ram", "storage"};
   // Moves an approved update (or direct edit) onto the game, replacing the old file/cover.
@@ -479,9 +506,8 @@ int main() {
     std::string path; { std::lock_guard<std::mutex> l(mu); std::string id = q.matches[1];
       if (!db["games"].contains(id)) { r.status = 404; return; } auto& g = db["games"][id]; std::string c = g.value("cover", "");
       if (q.has_param("update")) { auto me = whoami(q); c = (g.contains("update") && (g["owner"] == me || isMod(me))) ? g["update"].value("cover", "") : ""; }
-      if (c.empty()) { r.status = 404; return; } path = "data/files/" + c; }
-    std::ifstream f(path, std::ios::binary); std::string d((std::istreambuf_iterator<char>(f)), {});
-    r.set_content(d, path.size() > 4 && path.substr(path.size() - 4) == ".png" ? "image/png" : path.back() == 'p' ? "image/webp" : "image/jpeg");
+      if (c.empty()) { r.status = 404; return; } path = c; }
+    sendCached(q, r, path, mimeOf(path).c_str());
   });
   auto setStatus = [&](const httplib::Request& q, httplib::Response& r, const char* st) {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q);
@@ -500,7 +526,7 @@ int main() {
     json a = json::array(); for (auto& [k, u] : db["users"].items()) stillBanned(k);
     for (auto& [k, u] : db["users"].items()) { int made = 0; for (auto& [gk, g] : db["games"].items()) if (g.value("owner", "") == k) made++;
       a.push_back({{"name", u["name"]}, {"display", displayOf(u)}, {"key", k}, {"role", u.value("role", "user")}, {"balance", u["balance"]}, {"joined", u.value("joined", 0L)}, {"owned", u["library"].size()},
-        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"banUntil", u.value("banUntil", 0L)}, {"bannedAt", u.value("bannedAt", 0L)}, {"friendsLocked", u.value("friendsLocked", false)}, {"hasAvatar", u.value("avatar", "") != ""}, {"granted", u.value("granted", json::array())}}); }
+        {"made", made}, {"banned", u.value("banned", false)}, {"banReason", u.value("banReason", "")}, {"banUntil", u.value("banUntil", 0L)}, {"bannedAt", u.value("bannedAt", 0L)}, {"friendsLocked", u.value("friendsLocked", false)}, {"hasAvatar", u.value("avatar", "") != ""}, {"avatarV", u.value("avatar", "")}, {"granted", u.value("granted", json::array())}}); }
     reply(r, 200, a);
   });
   svr.Post("/api/admin/credits", [&](const httplib::Request& q, httplib::Response& r) {
@@ -599,6 +625,9 @@ int main() {
     std::lock_guard<std::mutex> l(mu); auto n = whoami(q); if (!isAdmin(n)) return reply(r, 403, err("Admins only"));
     auto b = json::parse(q.body, nullptr, false); if (!b.is_object()) return reply(r, 400, err("Bad request"));
     auto& st = settings();
+    if (b.contains("supportEmail")) { std::string e = b.value("supportEmail", "");
+      if (!e.empty() && (e.size() > 120 || !std::regex_match(e, std::regex(R"([^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+)")))) return reply(r, 400, err("That doesn't look like an email address"));
+      st["supportEmail"] = e; logAct(n, "settings", e.empty() ? "support email cleared" : "support email set"); }
     if (b.contains("announcement")) { std::string a = b.value("announcement", ""); if (a.size() > 300) a.resize(300); st["announcement"] = a; logAct(n, "announcement", a.empty() ? "cleared" : a); }
     save(); reply(r, 200, {{"ok", true}});
   });
@@ -716,7 +745,16 @@ int main() {
     reply(r, 404, err("Comment not found"));
   });
   // Serve ./index.html if present (GitHub layout), otherwise the ./web folder.
-  if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request&, httplib::Response& r) { std::ifstream f("index.html"); std::string d((std::istreambuf_iterator<char>(f)), {}); r.set_header("Cache-Control", "no-cache"); r.set_content(d, "text/html"); });
+  static std::mutex pageMu; static std::string pageBody, pageTag; static fs::file_time_type pageTime;
+  if (fs::exists("index.html")) svr.Get("/", [&](const httplib::Request& q, httplib::Response& r) {
+    std::string body, tag;
+    { std::lock_guard<std::mutex> l(pageMu); std::error_code ec; auto t = fs::last_write_time("index.html", ec);
+      if (pageBody.empty() || t != pageTime) { std::ifstream f("index.html"); pageBody.assign((std::istreambuf_iterator<char>(f)), {}); pageTime = t;
+        pageTag = "\"" + std::to_string(std::hash<std::string>{}(pageBody)) + "\""; }
+      body = pageBody; tag = pageTag; }
+    r.set_header("ETag", tag); r.set_header("Cache-Control", "no-cache");
+    if (q.get_header_value("If-None-Match") == tag) { r.status = 304; return; }
+    r.set_content(body, "text/html; charset=utf-8"); });
   else svr.set_mount_point("/", "./web");
   int port = getenv("PORT") ? atoi(getenv("PORT")) : 8080;
   if (!svr.bind_to_port("0.0.0.0", port)) {
