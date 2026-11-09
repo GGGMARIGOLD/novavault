@@ -1,0 +1,44 @@
+name: Deploy C++ Website to Pages
+
+on:
+  push:
+    branches: [ main ] # Change this to your main branch name if it is 'master'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Emscripten (C++ Web Compiler)
+      uses: mymindstorm/setup-emsdk@v14
+
+    - name: Compile C++ to WebAssembly
+      run: |
+        # Replace main.cpp with the actual name of your main C++ file
+        emcc main.cpp -o index.html -s WASM=1
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload Artifacts
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: '.'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
